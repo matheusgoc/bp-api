@@ -1,0 +1,23 @@
+info:
+  name: add
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{BASE}}/categories"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Teste2",
+        "description": "Pode apagar"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

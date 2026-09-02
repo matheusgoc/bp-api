@@ -1,0 +1,44 @@
+{
+  "name": "bp-api",
+  "version": "0.1.0",
+  "description": "Bairro Promo API — serverless backend (AWS Lambda + API Gateway + DynamoDB + Cognito)",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run build && jest",
+    "synth": "bun run build && cdk synth --no-staging",
+    "local:db": "docker compose up -d",
+    "local:db:down": "docker compose down",
+    "local:table": "node scripts/create-local-table.mjs",
+    "seed:categories": "node scripts/seed-categories.mjs",
+    "seed:categories:local": "DYNAMODB_ENDPOINT=http://localhost:8000 node scripts/seed-categories.mjs",
+    "local:api": "sam local start-api -t cdk.out/BpApiStack.template.json --docker-network bp-api --env-vars env.json --port 3001",
+    "start": "bun run watch & bun run local:api; wait",
+    "deploy": "bun run build && cdk deploy",
+    "destroy": "cdk destroy",
+    "cdk": "cdk"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.12.0",
+    "@aws-lambda-powertools/metrics": "^2.12.0",
+    "@aws-lambda-powertools/tracer": "^2.12.0",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "aws-jwt-verify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.0",
+    "aws-cdk": "^2.1000.0",
+    "aws-cdk-lib": "^2.170.0",
+    "aws-sdk-client-mock": "^4.1.0",
+    "constructs": "^10.4.0",
+    "esbuild": "^0.24.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.0"
+  }
+}

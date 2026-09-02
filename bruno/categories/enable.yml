@@ -1,0 +1,27 @@
+info:
+  name: enable
+  type: http
+  seq: 6
+
+http:
+  method: PATCH
+  url: "{{BASE}}/categories/:id/enable"
+  params:
+    - name: id
+      value: 462b26b8-e26c-4441-9b3b-413b10ed863a
+      type: path
+  body:
+    type: json
+    data: |
+      {
+        "name": "Teste2",
+        "description": "Pode apagar 2"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

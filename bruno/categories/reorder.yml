@@ -1,0 +1,33 @@
+info:
+  name: reorder
+  type: http
+  seq: 7
+
+http:
+  method: PATCH
+  url: "{{BASE}}/categories/reorder"
+  body:
+    type: json
+    data: |-
+      [
+        "alimentacao-e-bebidas",
+        "varejo-e-compras",
+        "saude-e-bem-estar",
+        "beleza-e-estetica",
+        "entretenimento",
+        "esportes-e-fitness",
+        "automotivo-e-reparos",
+        "servicos-gerais",
+        "educacao",
+        "profissionais",
+        "hospitalidade",
+        "transporte"
+      ]
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

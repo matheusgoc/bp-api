@@ -1,0 +1,26 @@
+info:
+  name: review
+  type: http
+  seq: 5
+
+http:
+  method: PATCH
+  url: "{{BASE}}/places/:id/review"
+  params:
+    - name: id
+      value: 6ef53057-39b4-4f0c-bd3b-e4c9bad7343d
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "status": "active"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

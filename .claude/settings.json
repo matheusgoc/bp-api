@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -m 5 -X POST http://localhost:8000 -H \"Content-Type: application/x-amz-json-1.0\" -H \"X-Amz-Target: DynamoDB_20120810.ListTables\" -d '{}' -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(kill -0 23848)",
+      "Read(//private/tmp/**)",
+      "Bash(node -e \"require\\('dns'\\).lookup\\('localhost', {all:true}, \\(e,a\\)=>console.log\\(e,a\\)\\)\")",
+      "Bash(nc -z -w2 ::1 8000)",
+      "Bash(nc -z -w2 127.0.0.1 8000)",
+      "Bash(bun --version)",
+      "Bash(docker port *)",
+      "Bash(kill -0 23848 2>/dev/null && echo \"still alive after 70s+\" || echo \"dead\"; cat /tmp/local-table.log; echo \"---ps---\"; ps aux | grep -i \"create-local-table\" | grep -v grep)",
+      "Bash(curl -s -m 5 -v http://localhost:8000 -X POST -H \"Content-Type: application/x-amz-json-1.0\" -H \"X-Amz-Target: DynamoDB_20120810.ListTables\" -d '{}')",
+      "Bash(kill 23848 23850)",
+      "Bash(DYNAMODB_ENDPOINT=http://127.0.0.1:8000 node /Users/matheus/www/bp/bp-api/scripts/create-local-table.mjs)",
+      "Bash(pkill -f \"create-local-table.mjs\")",
+      "Bash(node test-checksum.mjs)",
+      "Bash(pkill -f test-checksum.mjs)",
+      "Bash(docker volume *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(node -e ' *)",
+      "Bash(lsof -nP -iTCP:3001 -sTCP:LISTEN)",
+      "Bash(curl -sv http://localhost:3001/health)",
+      "Bash(docker network *)",
+      "Bash(sam --version)",
+      "Bash(python3 -c ' *)",
+      "Read(//Users/matheus/.aws/**)",
+      "Bash(aws sts *)",
+      "Bash(bun pm *)",
+      "Bash(bunx --help)",
+      "Bash(npx jest *)"
+    ]
+  }
+}

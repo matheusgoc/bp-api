@@ -1,0 +1,29 @@
+info:
+  name: update
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{BASE}}/places/:id"
+  params:
+    - name: id
+      value: 6ef53057-39b4-4f0c-bd3b-e4c9bad7343d
+      type: path
+  body:
+    type: json
+    data: |
+      {
+        "name": "Ruts Açaí",
+        "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis placerat pulvinar tempus. Donec vel sapien eget quam ullamcorper faucibus at vitae sapien. Proin eu volutpat eros, id consectetur eros. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse potenti. Ut id pretium arcu. Suspendisse convallis congue purus et auctor. Suspendisse potenti.",
+        "category": "alimentacao-e-bebidas",
+        "website": "rutsacai.com.br"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
