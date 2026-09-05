@@ -1,0 +1,50 @@
+info:
+  name: upload aws
+  type: http
+  seq: 9
+
+http:
+  method: PUT
+  url: http://localhost:9000/bp-api-local/places/295f833e-9d79-4e68-803f-a22aad2f511e/photo-draft.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=local%2F20260903%2Flocal%2Fs3%2Faws4_request&X-Amz-Date=20260903T212024Z&X-Amz-Expires=300&X-Amz-Signature=457e6b0191a39db988851b98e3cae437a03007abb27c79536b0c7556ed3be63c&X-Amz-SignedHeaders=host&x-id=PutObject
+  headers:
+    - name: Content-Type
+      value: image/jpeg
+  params:
+    - name: X-Amz-Algorithm
+      value: AWS4-HMAC-SHA256
+      type: query
+    - name: X-Amz-Content-Sha256
+      value: UNSIGNED-PAYLOAD
+      type: query
+    - name: X-Amz-Credential
+      value: local%2F20260903%2Flocal%2Fs3%2Faws4_request
+      type: query
+    - name: X-Amz-Date
+      value: 20260903T212024Z
+      type: query
+    - name: X-Amz-Expires
+      value: "300"
+      type: query
+    - name: X-Amz-Signature
+      value: 457e6b0191a39db988851b98e3cae437a03007abb27c79536b0c7556ed3be63c
+      type: query
+    - name: X-Amz-SignedHeaders
+      value: host
+      type: query
+    - name: x-id
+      value: PutObject
+      type: query
+  body:
+    type: file
+    data:
+      - filePath: /Users/matheus/Desktop/samples/photo.jpg
+        contentType: image/jpeg
+        selected: true
+  auth: inherit
+
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

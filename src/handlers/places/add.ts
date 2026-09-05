@@ -67,6 +67,8 @@ export const handler = async (
       category,
       photo: '',
       logo: '',
+      draftPhoto: '',
+      draftLogo: '',
       website: placeDto.website?.trim() ?? '',
       status: PlaceStatus.DRAFT,
       reason: '',

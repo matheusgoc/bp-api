@@ -5,13 +5,12 @@ info:
 
 http:
   method: GET
-  url: "{{BASE}}/places"
+  url: "{{BASE}}/places?published=all"
   params:
     - name: published
       value: all
       type: query
       description: true | false | all
-      disabled: true
   auth: inherit
 
 settings:

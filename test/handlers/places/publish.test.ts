@@ -22,6 +22,8 @@ const activeItem: PlaceItem = {
   category: 'cat-1',
   photo: 'p',
   logo: '',
+  draftPhoto: '',
+  draftLogo: '',
   website: '',
   status: PlaceStatus.ACTIVE,
   reason: '',

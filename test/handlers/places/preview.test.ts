@@ -21,6 +21,8 @@ const draftItem: PlaceItem = {
   category: 'cat-1',
   photo: 'p',
   logo: '',
+  draftPhoto: '',
+  draftLogo: '',
   website: '',
   status: PlaceStatus.DRAFT,
   reason: '',

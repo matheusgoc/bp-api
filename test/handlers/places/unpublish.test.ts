@@ -23,6 +23,8 @@ const publishedItem: PlaceItem = {
   category: 'cat-1',
   photo: 'p',
   logo: '',
+  draftPhoto: '',
+  draftLogo: '',
   website: '',
   status: PlaceStatus.REVIEWING,
   reason: '',

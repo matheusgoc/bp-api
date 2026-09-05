@@ -39,6 +39,8 @@ export interface PlaceItem {
   category: string;
   photo: string;
   logo: string;
+  draftPhoto: string;
+  draftLogo: string;
   website: string;
   status: PlaceStatus;
   reason: string;
