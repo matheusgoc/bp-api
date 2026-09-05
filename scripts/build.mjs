@@ -21,6 +21,8 @@ const entries = {
   "places-unpublish": "src/handlers/places/unpublish.ts",
   "places-list": "src/handlers/places/list.ts",
   "places-preview": "src/handlers/places/preview.ts",
+  "places-upload-image": "src/handlers/places/uploadImage.ts",
+  "places-approve-image": "src/handlers/places/approveImage.ts",
 };
 
 const watch = process.argv.includes("--watch");
@@ -39,8 +41,11 @@ const configs = Object.entries(entries).map(([name, entry]) => ({
   format: "cjs",
   sourcemap: true,
   minify: false,
-  // AWS SDK v3 ships with the Node.js Lambda runtime — no need to bundle it
-  external: ["@aws-sdk/*"],
+  // Only the DynamoDB-family SDK packages are confirmed present in the Node.js 22
+  // managed Lambda runtime — name those explicitly rather than a blanket
+  // "@aws-sdk/*" wildcard, so other @aws-sdk/* packages (e.g. client-s3,
+  // s3-request-presigner) get bundled in instead of failing at runtime.
+  external: ["@aws-sdk/client-dynamodb", "@aws-sdk/lib-dynamodb"],
   logLevel: "info",
 }));
 

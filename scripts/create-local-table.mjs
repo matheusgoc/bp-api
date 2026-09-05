@@ -1,5 +1,5 @@
 // Creates the local DynamoDB table (mirrors the CDK table definition).
-// Requires DynamoDB Local running: npm run local:db
+// Requires DynamoDB Local running: npm run local:storage
 import { execFileSync } from "node:child_process";
 import {
   CreateTableCommand,

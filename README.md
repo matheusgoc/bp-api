@@ -58,15 +58,17 @@ No Homebrew? AWS also publishes a standalone `.pkg` installer — see the [SAM C
 
 ## Run
 
-### 5 steps
+### 6 steps
 
-*Steps 1 and 2 are one-time per session!*
+*Steps 1 through 3 are one-time per session!*
 
-1. Start local DynamoDB and UI Admin (http://localhost:8001)
+1. Start local DynamoDB (+ admin UI at http://localhost:8001) and MinIO (S3-compatible local storage, console at http://localhost:9001)
 
       ```bash
-      $ docker compose up -d
+      $ bun local:storage
       ```
+
+      same as `docker compose up -d`
 
 2. Create the local table (idempotent)
 
@@ -76,7 +78,15 @@ No Homebrew? AWS also publishes a standalone `.pkg` installer — see the [SAM C
 
       same as `node scripts/create-local-table.mjs`
 
-3. Synthesize the CloudFormation template once
+3. Create the local bucket (idempotent)
+
+      ```bash
+      $ bun local:bucket
+      ```
+
+      same as `node scripts/create-local-bucket.mjs`
+
+4. Synthesize the CloudFormation template once
 
       ```bash
       $ bun synth
@@ -84,7 +94,7 @@ No Homebrew? AWS also publishes a standalone `.pkg` installer — see the [SAM C
 
       same as `bun run build && cdk synth --no-staging`
 
-4. Live Reload - rebuild handlers on every save (Terminal A):
+5. Live Reload - rebuild handlers on every save (Terminal A):
 
       ```bash
       $ bun watch
@@ -92,7 +102,7 @@ No Homebrew? AWS also publishes a standalone `.pkg` installer — see the [SAM C
 
       same as `node scripts/build.mjs --watch`
 
-5. Serve the API at http://localhost:3001 (Terminal B)
+6. Serve the API at http://localhost:3001 (Terminal B)
 
       ```bash
       $ bun local:api
@@ -102,7 +112,7 @@ No Homebrew? AWS also publishes a standalone `.pkg` installer — see the [SAM C
       
       `sam local start-api -t cdk.out/BpApiStack.template.json --docker-network bp-api --env-vars env.json --port 3001`
 
-      Or run steps 4 and 5 together in one terminal:
+      Or run steps 5 and 6 together in one terminal:
 
       ```bash
       $ bun start
@@ -115,7 +125,7 @@ Live reload works because `cdk synth --no-staging` makes the template point at `
 SAM local **does not enforce** the Cognito authorizer, so POST/PUT/PATCH work locally without a token. In AWS they require a valid JWT (`Authorization: Bearer <idToken>`).
 
 > [!NOTE]
-`sam local start-api` on **step 5** needs a **valid AWS SSO session**, even though it only serves local requests. The synthesized template always includes a `BootstrapVersion` parameter (`AWS::SSM::Parameter::Value<String>`, added automatically by CDK for the real `cdk deploy` bootstrap check), and SAM resolves every template parameter — including that one — against real AWS when it loads the template, regardless of whether anything local actually uses it. If step 5 fails with something like `TokenRetrievalError: Error when retrieving token from sso`, refresh your session and retry:
+`sam local start-api` on **step 6** needs a **valid AWS SSO session**, even though it only serves local requests. The synthesized template always includes a `BootstrapVersion` parameter (`AWS::SSM::Parameter::Value<String>`, added automatically by CDK for the real `cdk deploy` bootstrap check), and SAM resolves every template parameter — including that one — against real AWS when it loads the template, regardless of whether anything local actually uses it. If step 6 fails with something like `TokenRetrievalError: Error when retrieving token from sso`, refresh your session and retry:
 > ```bash
 > aws sso login  # or: aws sso login --sso-session <your-sso-session-name>
 > ```
@@ -144,6 +154,10 @@ Access DynamoDB on the AWS Console directly at
 Populate the default categories (idempotent — safe to re-run):
 
 ```bash
+# local
+bun run local:seed:categories
+
+# production
 bun run seed:categories
 ```
 
@@ -157,6 +171,18 @@ TABLE_NAME=<deployed-table-name> AWS_PROFILE=<profile> bun run seed:categories
 ```
 
 Your AWS credentials need `dynamodb:PutItem` on that table.
+
+## Images (S3)
+
+File uploads (place `photo`/`logo`, and any future upload location) follow a **presign → upload → approve** flow, going straight from the mobile app to S3 rather than through Lambda:
+
+1. **Presign** — an endpoint like `PATCH /places/{id}/images/{type}` returns a short-lived presigned PUT URL for a *draft* key.
+2. **Upload** — the app PUTs the file bytes directly to that URL (e.g. with `expo-file-system`'s `uploadAsync`); the draft key is recorded on the entity but never exposed through the public API.
+3. **Approve** — an endpoint like `PATCH /places/{id}/images/{type}/approve` copies the object server-side from its draft key to its live, public key and only then clears the draft. This is the hook point for future image verification/moderation before anything goes public.
+
+**Local**: MinIO (S3-compatible) runs via `docker compose up -d`, bucket created by `bun local:bucket`. Two env vars point at it for different reasons — `S3_ENDPOINT` (server-side calls like approve) must resolve inside the docker network (`http://minio:9000`); `S3_PRESIGN_ENDPOINT` (baked into presigned URLs) must resolve from the host (`http://localhost:9000`).
+
+**Production (AWS)**: the bucket is provisioned by CDK with CORS enabled and public read scoped to live keys only — draft keys stay private until promoted via approve.
 
 ## Test
 
@@ -176,7 +202,7 @@ bunx cdk bootstrap
 bun run deploy
 ```
 
-Outputs include `ApiUrl`, `UserPoolId`, `UserPoolClientId`, and `TableName` — the first three go into the mobile app's config (e.g., Amplify/amazon-cognito-identity-js).
+Outputs include `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `TableName`, and `ImagesBucketName` — the first three go into the mobile app's config (e.g., Amplify/amazon-cognito-identity-js).
 
 ## Architecture
 
@@ -195,7 +221,8 @@ API Gateway (REST, stage v1) ── Cognito Authorizer
 Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), which synthesizes CloudFormation. Locally, **SAM CLI** runs the synthesized template in Docker containers against **DynamoDB Local**.
 
 - Every Lambda has **X-Ray tracing**, a dedicated **CloudWatch log group** (1-week retention), and **Lambda Powertools** (structured logs, tracer, metrics).
-- Handlers are bundled per-function with **esbuild** into `dist/<name>/index.js` (AWS SDK v3 is excluded — it ships with the runtime).
+- Handlers are bundled per-function with **esbuild** into `dist/<name>/index.js`. Only the DynamoDB-family AWS SDK v3 packages are excluded from the bundle (they ship with the runtime) — other `@aws-sdk/*` packages, like the S3 client/presigner used for image uploads, are bundled in.
+- Place `photo`/`logo` uploads go directly to an **S3 bucket** via a presigned PUT URL (`PATCH /places/{id}/images/{type}`) — see [Images (S3)](#images-s3).
 - DynamoDB uses single-table design: places are `PK=PLACE#<id>, SK=METADATA`. `GSI1PK` is **sparse** — it's only set to `PLACE#PUBLISHED` while a place is published, so `GET /places` is a plain query against `GSI1` with no filter expression, and naturally excludes drafts/unpublished places. `GSI2PK` is always `'PLACE'` (set once at creation) and backs the unrestricted `?published=all`/`?published=false` listing views. **category** reuses the exact same pattern (`PK=CATEGORY#<id>`, `GSI1PK='CATEGORY#ENABLED'` sparse on `enabled`, `GSI2PK='CATEGORY'` always) in the same table — no schema change was needed.
 - The domain model is **place** (central), **location**, **offer**, **category**, **user** — a place has many locations and offers, one category, and one or more owning users. **place** and **category** are implemented so far; the others are planned (see Roadmap).
 
@@ -218,6 +245,8 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 | PATCH  | `/places/{id}/publish`  | JWT required | Publish a place. Only succeeds when `status === active`. |
 | PATCH  | `/places/{id}/unpublish`| JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
 | PATCH  | `/places/{id}/review`   | JWT required | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
+| PATCH  | `/places/{id}/images/{type}` | JWT required | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
+| PATCH  | `/places/{id}/images/{type}/approve` | JWT required | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to its live key, then clears the draft. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
 
 JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. **SAM local does not enforce it** — those routes work locally without a token.
 
@@ -231,11 +260,12 @@ bin/bp-api.ts                  CDK app entry point
 lib/bp-api-stack.ts            Infrastructure (API GW, Cognito, DynamoDB, Lambdas)
 src/handlers/                  Lambda entry points (one bundle each, grouped by entity)
 src/models/                    Per-entity model types (client-facing, DynamoDB item, mapper)
-src/lib/                       Shared: Powertools, DynamoDB client, HTTP helpers
+src/lib/                       Shared: Powertools, DynamoDB client, S3 client, HTTP helpers
 scripts/build.mjs              esbuild bundler (--watch for live reload)
 scripts/create-local-table.mjs Local DynamoDB table bootstrap
+scripts/create-local-bucket.mjs Local MinIO bucket bootstrap
 test/                          Jest: handler tests + CDK assertions
-docker-compose.yml             DynamoDB Local (:8000) + admin UI (:8001)
+docker-compose.yml             DynamoDB Local (:8000) + admin UI (:8001) + MinIO (:9000, console :9001)
 env.json                       Env overrides for SAM local
 ```
 
@@ -247,5 +277,4 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
 - Location, offer, and user entities/features (place and category are the first two of five)
 - User roles (customer/owner/admin/master) and ownership-based authorization on place endpoints — `POST /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
-- Photo/logo upload flow (place `update` doesn't accept them yet)
 - Request validation with API Gateway models or zod

@@ -6,6 +6,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 
 const SERVICE_NAME = 'bp-api';
 
@@ -40,6 +41,34 @@ export class BpApiStack extends cdk.Stack {
       partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'GSI2SK', type: dynamodb.AttributeType.STRING },
     });
+
+    // ─────────────────────────────────────────────
+    // S3 — place photo/logo storage
+    // ─────────────────────────────────────────────
+
+    const imagesBucket = new s3.Bucket(this, 'ImagesBucket', {
+      // DESTROY is convenient while iterating; switch to RETAIN before prod
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET],
+          allowedOrigins: ['*'],
+          allowedHeaders: ['*'],
+          exposedHeaders: ['ETag'],
+          maxAge: 3000,
+        },
+      ],
+    });
+
+    // Public read is scoped to live keys only (places/{id}/photo.{ext},
+    // places/{id}/logo.{ext}) — draft keys (places/{id}/{type}-draft.{ext})
+    // are never publicly readable, so an unapproved (or malicious) upload
+    // isn't fetchable by anyone who guesses/scrapes its URL before it's ever
+    // promoted via PATCH .../approve.
+    imagesBucket.grantPublicAccess('places/*/photo.*', 's3:GetObject');
+    imagesBucket.grantPublicAccess('places/*/logo.*', 's3:GetObject');
 
     // ─────────────────────────────────────────────
     // Cognito — user pool for the mobile app
@@ -129,9 +158,23 @@ export class BpApiStack extends cdk.Stack {
     const reviewPlaceFn = makeFunction('places-review');
     const listPlacesFn = makeFunction('places-list');
     const previewPlaceFn = makeFunction('places-preview');
+    const uploadPlaceImageFn = makeFunction('places-upload-image');
+    const approvePlaceImageFn = makeFunction('places-approve-image');
 
     listPlacesFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
     listPlacesFn.addEnvironment('USER_POOL_CLIENT_ID', userPoolClient.userPoolClientId);
+
+    for (const fn of [uploadPlaceImageFn, approvePlaceImageFn]) {
+      fn.addEnvironment('BUCKET_NAME', imagesBucket.bucketName);
+      // Empty by default; overridden by env.json when running under SAM local.
+      // S3_ENDPOINT is for calls the Lambda itself makes (CopyObject, ...) —
+      // locally that's the docker-network address. S3_PRESIGN_ENDPOINT is
+      // baked into presigned URLs handed to an external caller, so locally
+      // that must be a host-reachable address instead — see src/lib/s3.ts.
+      fn.addEnvironment('S3_ENDPOINT', '');
+      fn.addEnvironment('S3_PRESIGN_ENDPOINT', '');
+      fn.addEnvironment('S3_PUBLIC_URL_BASE', `https://${imagesBucket.bucketRegionalDomainName}`);
+    }
 
     table.grantWriteData(addPlaceFn);
     table.grantWriteData(updatePlaceFn);
@@ -140,6 +183,12 @@ export class BpApiStack extends cdk.Stack {
     table.grantWriteData(reviewPlaceFn);
     table.grantReadData(listPlacesFn);
     table.grantReadData(previewPlaceFn);
+    table.grantWriteData(uploadPlaceImageFn);
+    imagesBucket.grantPut(uploadPlaceImageFn); // s3:PutObject only — presigning needs no other S3 permission
+    table.grantReadWriteData(approvePlaceImageFn);
+    imagesBucket.grantRead(approvePlaceImageFn);
+    imagesBucket.grantPut(approvePlaceImageFn);
+    imagesBucket.grantDelete(approvePlaceImageFn);
 
     // ─────────────────────────────────────────────
     // API Gateway (REST) + Cognito authorizer
@@ -214,6 +263,11 @@ export class BpApiStack extends cdk.Stack {
     placeById
       .addResource('review')
       .addMethod('PATCH', new apigw.LambdaIntegration(reviewPlaceFn), requireAuth); // PATCH /places/{id}/review
+    const placeImageType = placeById.addResource('images').addResource('{type}');
+    placeImageType.addMethod('PATCH', new apigw.LambdaIntegration(uploadPlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}
+    placeImageType
+      .addResource('approve')
+      .addMethod('PATCH', new apigw.LambdaIntegration(approvePlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}/approve
 
     // ─────────────────────────────────────────────
     // Outputs
@@ -225,5 +279,6 @@ export class BpApiStack extends cdk.Stack {
       value: userPoolClient.userPoolClientId,
     });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
+    new cdk.CfnOutput(this, 'ImagesBucketName', { value: imagesBucket.bucketName });
   }
 }
