@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant Front
+    participant Amplify
+    participant Cognito
+    participant Back
+
+    Customer->>+Front: Fill up sign-up form
+    Front->>Front: storeProfile()
+    Front-->>-Customer: Password form
+    Customer->>+Front: Define password
+    Front->>Amplify: signUp()
+    Amplify->>+Cognito: signUp()
+    Cognito->>Cognito: Send confirmation email
+    Cognito-->>-Front: [customer cognito profile created]
+    Front-->>-Customer: Email confirmation form
+    Customer->>+Front: Confirm Email
+    Front->>Amplify: confirmSignUp()
+    Amplify->>Cognito: confirmSignUp()
+    Cognito-->>Front: [sign-up confirmed]
+    Front->>Amplify: signIn()
+    Amplify->>Cognito: signIn()
+    Cognito-->>Front: [sign-in confirmed: token]
+    Front->>Back: signUp() - POST /profile
+    Back-->>Front: [201 - profile created]
+    Front->>Front: remove stored profile
+    Front-->>-Customer: Sign-up confirmation

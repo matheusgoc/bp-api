@@ -50,7 +50,7 @@ export class BpApiStack extends cdk.Stack {
       // DESTROY is convenient while iterating; switch to RETAIN before prod
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS_ONLY,
       cors: [
         {
           allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET],
@@ -62,11 +62,6 @@ export class BpApiStack extends cdk.Stack {
       ],
     });
 
-    // Public read is scoped to live keys only (places/{id}/photo.{ext},
-    // places/{id}/logo.{ext}) — draft keys (places/{id}/{type}-draft.{ext})
-    // are never publicly readable, so an unapproved (or malicious) upload
-    // isn't fetchable by anyone who guesses/scrapes its URL before it's ever
-    // promoted via PATCH .../approve.
     imagesBucket.grantPublicAccess('places/*/photo.*', 's3:GetObject');
     imagesBucket.grantPublicAccess('places/*/logo.*', 's3:GetObject');
 
@@ -85,7 +80,7 @@ export class BpApiStack extends cdk.Stack {
       passwordPolicy: {
         minLength: 8,
         requireLowercase: true,
-        requireDigits: true,
+        requireDigits: false,
         requireSymbols: false,
         requireUppercase: false,
       },
@@ -123,8 +118,7 @@ export class BpApiStack extends cdk.Stack {
         logGroup,
         environment: {
           TABLE_NAME: table.tableName,
-          // Empty by default; overridden by env.json when running under SAM local
-          DYNAMODB_ENDPOINT: '',
+          DYNAMODB_ENDPOINT: '', // empty by default; overridden by env.json when running under SAM local
           POWERTOOLS_SERVICE_NAME: SERVICE_NAME,
           POWERTOOLS_METRICS_NAMESPACE: 'BairroPromo',
           POWERTOOLS_LOG_LEVEL: 'INFO',
@@ -133,8 +127,12 @@ export class BpApiStack extends cdk.Stack {
       });
     };
 
+    // health
+
     const healthFn = makeFunction('health');
 
+    // category
+    
     const addCategoryFn = makeFunction('categories-add');
     const updateCategoryFn = makeFunction('categories-update');
     const listCategoriesFn = makeFunction('categories-list');
@@ -142,7 +140,6 @@ export class BpApiStack extends cdk.Stack {
     const enableCategoryFn = makeFunction('categories-enable');
     const disableCategoryFn = makeFunction('categories-disable');
     const reorderCategoriesFn = makeFunction('categories-reorder');
-
     table.grantWriteData(addCategoryFn);
     table.grantWriteData(updateCategoryFn);
     table.grantWriteData(enableCategoryFn);
@@ -151,26 +148,23 @@ export class BpApiStack extends cdk.Stack {
     table.grantReadData(listCategoriesFn);
     table.grantReadData(previewCategoryFn);
 
+    // place
+    
     const addPlaceFn = makeFunction('places-add');
     const updatePlaceFn = makeFunction('places-update');
     const publishPlaceFn = makeFunction('places-publish');
     const unpublishPlaceFn = makeFunction('places-unpublish');
     const reviewPlaceFn = makeFunction('places-review');
-    const listPlacesFn = makeFunction('places-list');
     const previewPlaceFn = makeFunction('places-preview');
-    const uploadPlaceImageFn = makeFunction('places-upload-image');
-    const approvePlaceImageFn = makeFunction('places-approve-image');
 
+    const listPlacesFn = makeFunction('places-list');
     listPlacesFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
     listPlacesFn.addEnvironment('USER_POOL_CLIENT_ID', userPoolClient.userPoolClientId);
 
+    const uploadPlaceImageFn = makeFunction('places-upload-image');
+    const approvePlaceImageFn = makeFunction('places-approve-image');
     for (const fn of [uploadPlaceImageFn, approvePlaceImageFn]) {
       fn.addEnvironment('BUCKET_NAME', imagesBucket.bucketName);
-      // Empty by default; overridden by env.json when running under SAM local.
-      // S3_ENDPOINT is for calls the Lambda itself makes (CopyObject, ...) —
-      // locally that's the docker-network address. S3_PRESIGN_ENDPOINT is
-      // baked into presigned URLs handed to an external caller, so locally
-      // that must be a host-reachable address instead — see src/lib/s3.ts.
       fn.addEnvironment('S3_ENDPOINT', '');
       fn.addEnvironment('S3_PRESIGN_ENDPOINT', '');
       fn.addEnvironment('S3_PUBLIC_URL_BASE', `https://${imagesBucket.bucketRegionalDomainName}`);
@@ -183,12 +177,26 @@ export class BpApiStack extends cdk.Stack {
     table.grantWriteData(reviewPlaceFn);
     table.grantReadData(listPlacesFn);
     table.grantReadData(previewPlaceFn);
+
     table.grantWriteData(uploadPlaceImageFn);
     imagesBucket.grantPut(uploadPlaceImageFn); // s3:PutObject only — presigning needs no other S3 permission
     table.grantReadWriteData(approvePlaceImageFn);
     imagesBucket.grantRead(approvePlaceImageFn);
     imagesBucket.grantPut(approvePlaceImageFn);
     imagesBucket.grantDelete(approvePlaceImageFn);
+
+    // profile
+
+    const signupProfileFn = makeFunction('profile-signup');
+
+    const previewProfileFn = makeFunction('profile-preview');
+    const updateProfileFn = makeFunction('profile-update');
+    const convertProfileFn = makeFunction('profile-convert');
+
+    table.grantReadWriteData(signupProfileFn);
+    table.grantReadData(previewProfileFn);
+    table.grantReadWriteData(updateProfileFn);
+    table.grantReadWriteData(convertProfileFn);
 
     // ─────────────────────────────────────────────
     // API Gateway (REST) + Cognito authorizer
@@ -226,7 +234,7 @@ export class BpApiStack extends cdk.Stack {
       .addResource('health')
       .addMethod('GET', new apigw.LambdaIntegration(healthFn)); // GET /health
 
-    // -=-= categories =-=-
+    // category
 
     const categories = api.root.addResource('categories');
     categories.addMethod('GET', new apigw.LambdaIntegration(listCategoriesFn)); // GET /categories
@@ -245,7 +253,7 @@ export class BpApiStack extends cdk.Stack {
       .addResource('disable')
       .addMethod('PATCH', new apigw.LambdaIntegration(disableCategoryFn), requireAuth); // PATCH /categories/{id}/disable
 
-    // -=-= places =-=-
+    // place
 
     const places = api.root.addResource('places');
     places.addMethod('GET', new apigw.LambdaIntegration(listPlacesFn)); // GET /places
@@ -268,6 +276,16 @@ export class BpApiStack extends cdk.Stack {
     placeImageType
       .addResource('approve')
       .addMethod('PATCH', new apigw.LambdaIntegration(approvePlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}/approve
+
+    // profile
+
+    const profile = api.root.addResource('profile');
+    profile.addMethod('POST', new apigw.LambdaIntegration(signupProfileFn), requireAuth); // POST /profile — called after Amplify Cognito signin, token already verified by Gateway
+    profile.addMethod('GET', new apigw.LambdaIntegration(previewProfileFn), requireAuth); // GET /profile
+    profile.addMethod('PUT', new apigw.LambdaIntegration(updateProfileFn), requireAuth); // PUT /profile
+    profile
+      .addResource('convert')
+      .addMethod('PATCH', new apigw.LambdaIntegration(convertProfileFn), requireAuth); // PATCH /profile/convert
 
     // ─────────────────────────────────────────────
     // Outputs

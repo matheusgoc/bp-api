@@ -23,6 +23,10 @@ const entries = {
   "places-preview": "src/handlers/places/preview.ts",
   "places-upload-image": "src/handlers/places/uploadImage.ts",
   "places-approve-image": "src/handlers/places/approveImage.ts",
+  "profile-signup": "src/handlers/profile/signup.ts",
+  "profile-preview": "src/handlers/profile/preview.ts",
+  "profile-update": "src/handlers/profile/update.ts",
+  "profile-convert": "src/handlers/profile/convert.ts",
 };
 
 const watch = process.argv.includes("--watch");
