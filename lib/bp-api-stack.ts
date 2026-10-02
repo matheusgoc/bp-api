@@ -185,6 +185,20 @@ export class BpApiStack extends cdk.Stack {
     imagesBucket.grantPut(approvePlaceImageFn);
     imagesBucket.grantDelete(approvePlaceImageFn);
 
+    // location
+
+    const addLocationFn = makeFunction('locations-add');
+    const updateLocationFn = makeFunction('locations-update');
+    const removeLocationFn = makeFunction('locations-remove');
+    const previewLocationFn = makeFunction('locations-preview');
+
+    // add/update/remove read the caller's profile (role check) and transact-write
+    // the location + the parent place's review reset
+    table.grantReadWriteData(addLocationFn);
+    table.grantReadWriteData(updateLocationFn);
+    table.grantReadWriteData(removeLocationFn);
+    table.grantReadData(previewLocationFn);
+
     // profile
 
     const signupProfileFn = makeFunction('profile-signup');
@@ -276,6 +290,16 @@ export class BpApiStack extends cdk.Stack {
     placeImageType
       .addResource('approve')
       .addMethod('PATCH', new apigw.LambdaIntegration(approvePlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}/approve
+
+    // location
+
+    const placeLocations = placeById.addResource('locations');
+    placeLocations.addMethod('POST', new apigw.LambdaIntegration(addLocationFn), requireAuth); // POST /places/{id}/locations
+
+    const placeLocationById = placeLocations.addResource('{locationId}');
+    placeLocationById.addMethod('GET', new apigw.LambdaIntegration(previewLocationFn), requireAuth); // GET /places/{id}/locations/{locationId}
+    placeLocationById.addMethod('PUT', new apigw.LambdaIntegration(updateLocationFn), requireAuth); // PUT /places/{id}/locations/{locationId}
+    placeLocationById.addMethod('DELETE', new apigw.LambdaIntegration(removeLocationFn), requireAuth); // DELETE /places/{id}/locations/{locationId}
 
     // profile
 

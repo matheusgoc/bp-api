@@ -30,14 +30,14 @@ describe('BpApiStack', () => {
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 1);
   });
 
-  it('creates the twenty-one Lambda handlers with tracing enabled', () => {
+  it('creates the twenty-five Lambda handlers with tracing enabled', () => {
     const functions = template.findResources('AWS::Lambda::Function', {
       Properties: {
         Runtime: 'nodejs22.x',
         TracingConfig: { Mode: 'Active' },
       },
     });
-    expect(Object.keys(functions)).toHaveLength(21);
+    expect(Object.keys(functions)).toHaveLength(25);
   });
 
   it('creates a REST API with a Cognito authorizer', () => {
@@ -47,15 +47,16 @@ describe('BpApiStack', () => {
     });
   });
 
-  it('protects place and category mutations with Cognito auth but leaves list/preview public', () => {
+  it('protects place, location and category mutations with Cognito auth but leaves list/preview public', () => {
     const protectedMethods = template.findResources('AWS::ApiGateway::Method', {
       Properties: { AuthorizationType: 'COGNITO_USER_POOLS' },
     });
     // POST /places, PUT /places/{id}, POST .../publish, POST .../unpublish, POST .../review,
     // POST .../images/{type}, POST .../images/{type}/approve, POST /categories,
     // PUT /categories/{id}, POST .../enable, POST .../disable, POST .../reorder,
-    // POST /profile, GET /profile, PUT /profile, PATCH /profile/convert
-    expect(Object.keys(protectedMethods)).toHaveLength(16);
+    // POST /profile, GET /profile, PUT /profile, PATCH /profile/convert,
+    // POST /places/{id}/locations, GET/PUT/DELETE /places/{id}/locations/{locationId}
+    expect(Object.keys(protectedMethods)).toHaveLength(20);
 
     const publicMethods = template.findResources('AWS::ApiGateway::Method', {
       Properties: { AuthorizationType: 'NONE' },

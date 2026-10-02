@@ -223,14 +223,18 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 - Every Lambda has **X-Ray tracing**, a dedicated **CloudWatch log group** (1-week retention), and **Lambda Powertools** (structured logs, tracer, metrics).
 - Handlers are bundled per-function with **esbuild** into `dist/<name>/index.js`. Only the DynamoDB-family AWS SDK v3 packages are excluded from the bundle (they ship with the runtime) — other `@aws-sdk/*` packages, like the S3 client/presigner used for image uploads, are bundled in.
 - Place `photo`/`logo` uploads go directly to an **S3 bucket** via a presigned PUT URL (`PATCH /places/{id}/images/{type}`) — see [Images (S3)](#images-s3).
-- DynamoDB uses single-table design: places are `PK=PLACE#<id>, SK=METADATA`. `GSI1PK` is **sparse** — it's only set to `PLACE#PUBLISHED` while a place is published, so `GET /places` is a plain query against `GSI1` with no filter expression, and naturally excludes drafts/unpublished places. `GSI2PK` is always `'PLACE'` (set once at creation) and backs the unrestricted `?published=all`/`?published=false` listing views. **category** reuses the exact same pattern (`PK=CATEGORY#<id>`, `GSI1PK='CATEGORY#ENABLED'` sparse on `enabled`, `GSI2PK='CATEGORY'` always) in the same table — no schema change was needed.
-- The domain model is **place** (central), **location**, **offer**, **category**, **user** — a place has many locations and offers, one category, and one or more owning users. **place** and **category** are implemented so far; the others are planned (see Roadmap).
+- DynamoDB uses single-table design: places are `PK=PLACE#<id>, SK=METADATA`. `GSI1PK` is **sparse** — it's only set to `PLACE#PUBLISHED` while a place is published, so `GET /places` is a plain query against `GSI1` with no filter expression, and naturally excludes drafts/unpublished places. `GSI2PK` is always `'PLACE'` (set once at creation) and backs the unrestricted `?published=all`/`?published=false` listing views. **category** reuses the exact same pattern (`PK=CATEGORY#<id>`, `GSI1PK='CATEGORY#ENABLED'` sparse on `enabled`, `GSI2PK='CATEGORY'` always) in the same table — no schema change was needed. **Locations** live in their place's partition (`PK=PLACE#<placeId>, SK=LOCATION#<id>`, no GSI attributes), so `GET /places/{id}` fetches a place and all its locations with a single query.
+- The domain model is **place** (central), **location**, **offer**, **category**, **user** — a place has many locations and offers, one category, and one or more owning users. **place**, **category**, **user** (profile), and **location** are implemented so far; **offer** is planned (see Roadmap).
 
 ## Endpoints
 
 | Method | Path                    | Auth         | Description |
 |--------|-------------------------|--------------|-------------|
 | GET    | `/health`               | Public       | Health check. |
+| POST   | `/profile`              | JWT required | Create the caller's app-level profile — called by the app after Amplify Cognito signup/confirm/signin. Requires `name`/`email`; `phone`/`isWhatsapp`/`dob`/`gender` optional. Created as `role: customer`, `subscriptionStatus: not_applied`. `409` if the caller already has a profile. |
+| GET    | `/profile`              | JWT required | Preview the caller's own profile (resolved from the token, never a path parameter). |
+| PUT    | `/profile`              | JWT required | Update the caller's own `name`/`email`/`phone`/`dob`/`gender`/`isWhatsapp`. |
+| PATCH  | `/profile/convert`      | JWT required | Convert the caller to `owner` (no body needed). If the caller is an `admin` and the body has `{ id, type? }`, converts that *other* user instead to `type` (any role, default `owner`) — `400` if `id` is the caller's own, `404` if the user doesn't exist. Non-admins' `id`/`type` are ignored. |
 | GET    | `/categories`           | Public       | List categories. `?enabled=` (`true`/`false`/`all`) |
 | POST   | `/categories`           | JWT required | Create a category. Always created `enabled: true` (no draft state). |
 | GET    | `/categories/{id}`      | Public       | Preview a single category. |
@@ -240,18 +244,21 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 | PATCH  | `/categories/reorder`   | JWT required | Rewrite `order` for the given category ids to their index in the body array (0 = first). |
 | GET    | `/places`               | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`). |
 | POST   | `/places`               | JWT required | Create a place. Always created as `status: draft`, `published: false`. |
-| GET    | `/places/{id}`          | Public       | Preview a single place. Ignores `published`/`status` — returns regardless of visibility state. |
+| GET    | `/places/{id}`          | Public       | Preview a single place, including its `locations` (oldest first). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
 | PUT    | `/places/{id}`          | JWT required | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
 | PATCH  | `/places/{id}/publish`  | JWT required | Publish a place. Only succeeds when `status === active`. |
 | PATCH  | `/places/{id}/unpublish`| JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
 | PATCH  | `/places/{id}/review`   | JWT required | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
 | PATCH  | `/places/{id}/images/{type}` | JWT required | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
 | PATCH  | `/places/{id}/images/{type}/approve` | JWT required | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to its live key, then clears the draft. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
+| POST   | `/places/{id}/locations` | JWT + owner/admin | Add a location to the place (body: `PlaceLocationModel`, see below). Resets the place's `status` to `reviewing`. `404` if the place doesn't exist. |
+| GET    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Preview a single location (for populating the edit form). `404` if missing or soft-deleted. |
+| PUT    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Replace a location's fields — full replacement, so omitted optional fields are cleared. Resets the place's `status` to `reviewing`. `404` if missing or soft-deleted. |
+| DELETE | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Soft-delete a location (`deleted: true`; never hard-deleted). Resets the place's `status` to `reviewing`. |
 
 JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. **SAM local does not enforce it** — those routes work locally without a token.
 
-  > [!NOTE] 
-  A place can only be published once its `status` is `active`. Use `PATCH /places/{id}/review` with `{ status: "active" }` to move it there (no role restriction is enforced yet — see Roadmap), or flip `status` by hand — see [Inspecting data](#inspecting-data).
+"owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations.
 
 ## Project structure
 
@@ -260,7 +267,7 @@ bin/bp-api.ts                  CDK app entry point
 lib/bp-api-stack.ts            Infrastructure (API GW, Cognito, DynamoDB, Lambdas)
 src/handlers/                  Lambda entry points (one bundle each, grouped by entity)
 src/models/                    Per-entity model types (client-facing, DynamoDB item, mapper)
-src/lib/                       Shared: Powertools, DynamoDB client, S3 client, HTTP helpers
+src/lib/                       Shared: Powertools, DynamoDB client, S3 client, HTTP helpers, auth/role checks
 scripts/build.mjs              esbuild bundler (--watch for live reload)
 scripts/create-local-table.mjs Local DynamoDB table bootstrap
 scripts/create-local-bucket.mjs Local MinIO bucket bootstrap
@@ -275,6 +282,6 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 
 - CI/CD with CodePipeline (CDK Pipelines) — deploy on push
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
-- Location, offer, and user entities/features (place and category are the first two of five)
-- User roles (customer/owner/admin/master) and ownership-based authorization on place endpoints — `POST /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
+- Offer entity/feature (the last of the five domain entities)
+- Role and ownership-based authorization on place/category endpoints, plus per-place ownership on location endpoints (these are only role-gated to owner/admin today) — `PATCH /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
 - Request validation with API Gateway models or zod

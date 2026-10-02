@@ -118,7 +118,7 @@ export const handler = async (
       }),
     );
 
-    const data = ((result.Items ?? []) as PlaceItem[]).map(toPlaceModel);
+    const data = ((result.Items ?? []) as PlaceItem[]).map((item) => toPlaceModel(item));
     const nextCursor = result.LastEvaluatedKey
       ? encodeCursor(filter, result.LastEvaluatedKey)
       : null;

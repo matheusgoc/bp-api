@@ -52,7 +52,7 @@ SAM local does **not** enforce the Cognito authorizer — POST/PUT/PATCH endpoin
 
 ## Domain model
 
-The product domain has five entities: **place** (central), **location**, **offer**, **category**, **user**. A place has many locations, many offers, one category, and is managed by one or more users. An offer belongs to either a location or a place, never both. Users are customer (base), owner (manages their own places), admin (all places), or master (all users + places). **place**, **category**, and **user** (profile) are implemented — location and offer are still built out feature by feature; treat their fields (`locations`, `offers`, ownership) as placeholders until those features land.
+The product domain has five entities: **place** (central), **location**, **offer**, **category**, **user**. A place has many locations, many offers, one category, and is managed by one or more users. An offer belongs to either a location or a place, never both. Users are customer (base), owner (manages their own places), admin (all places), or master (all users + places). **place**, **category**, **user** (profile), and **location** are implemented — offer is still built out feature by feature; treat its fields (`offers`, ownership) as placeholders until that feature lands.
 
 ### Place status/publish workflow
 
@@ -87,6 +87,18 @@ Every category has a numeric `order` used to sort `GET /categories`. `add` defau
 - `scripts/seed-admin.mjs` (`bun run seed:admin` / `local:seed:admin`) bootstraps a single admin user if none exists — `ScanCommand` filtering for `role = admin` (the one scan in this codebase; justified only for this one-off bootstrap script, not a hot path). It's a DynamoDB-only fixture with no real Cognito account behind it, so in real AWS it isn't actually loginable — its purpose is giving local testing an admin identity to exercise `convert`'s admin path (craft a fake local JWT with `sub` matching its `externalId`, default `'seed-admin'`, override via `SEED_ADMIN_EXTERNAL_ID`).
 - A user profile is never deleted.
 
+### Location
+
+`src/handlers/locations/` implements add/update/remove/preview for a place's physical branches (`PlaceLocationModel` in `src/models/location.ts` — `lat`/`lon` are **numbers**, validated to ±90/±180; `phone`/`isWhatsapp`/`email`/`lat`/`lon` optional; `workingHours` a required array of `{ weekDay, start, end }` with `HH:mm` times). Validation is shared by add and update in `src/handlers/locations/dto.ts`.
+
+- **Routes deviate from the BP-70 story's `/place/:placeId/location/:locationId`**: API Gateway forbids sibling path params with different names under the same parent, and `/places/{id}` already exists — so they're `/places/{id}/locations[/{locationId}]`.
+- **Storage**: `PK=PLACE#<placeId>, SK=LOCATION#<id>` — same partition as the place's `METADATA` item, no GSI attributes (so locations never leak into `places-list`'s GSI1/GSI2 queries). Optional strings stored as `''`, absent `lat`/`lon` as `null`.
+- **No list endpoint** — `GET /places/{id}` (still public) does one `QueryCommand` on `PK = PLACE#<id>` returning the METADATA item plus all `LOCATION#` items, sorted by `createdAt`. `PlaceModel.locations` is optional and **only** populated by preview; list/add/update/publish/etc. omit it.
+- **Soft delete**: `DELETE` sets `deleted: true`/`deletedAt`; a location is never hard-deleted. Deleted locations are hidden from place preview unless `?deleted=true` (public, no JWT — confirmed product decision), in which case they carry `deleted: true` (the only time that field appears). Location preview/update return `404` for deleted locations.
+- **Review reset**: add/update/remove each run as one `TransactWriteCommand` — the location write plus an `Update` setting the parent place's `status` to `reviewing` (same side effect as `PUT /places/{id}`, `published` untouched) whose `attribute_exists(PK)` condition doubles as the place-exists check. `TransactionCanceledException.CancellationReasons` is positional (`[location, place]`) and mapped to `404 Place not found` / `404 Location not found` (`src/handlers/locations/transaction.ts`).
+- `update` is a **full replacement** (body is the whole model) — omitted optional fields are cleared.
+- **Role gate**: all four location endpoints are Cognito-protected and call `requireRole(event, [OWNER, ADMIN])` from `src/lib/access.ts` (customers get `403`). No per-place ownership check yet — any owner can manage any place's locations until that's built.
+
 ## Architecture
 
 ```
@@ -105,6 +117,10 @@ API Gateway (REST, stage v1) ── Cognito Authorizer
       ├── PATCH /places/{id}/review        → places-review Lambda     (JWT required)
       ├── PATCH /places/{id}/images/{type} → places-upload-image Lambda (JWT required)
       ├── PATCH /places/{id}/images/{type}/approve → places-approve-image Lambda (JWT required)
+      ├── POST   /places/{id}/locations              → locations-add Lambda     (JWT + owner/admin)
+      ├── GET    /places/{id}/locations/{locationId} → locations-preview Lambda (JWT + owner/admin)
+      ├── PUT    /places/{id}/locations/{locationId} → locations-update Lambda  (JWT + owner/admin)
+      ├── DELETE /places/{id}/locations/{locationId} → locations-remove Lambda  (JWT + owner/admin)
       ├── GET   /categories                → categories-list Lambda      (public, no auth gate)
       ├── POST  /categories                → categories-add Lambda       (JWT required)
       ├── GET   /categories/{id}           → categories-preview Lambda   (public)
@@ -129,11 +145,12 @@ API Gateway (REST, stage v1) ── Cognito Authorizer
 - **Shared handler libs** (`src/lib/`):
   - `dynamo.ts` — exports a shared `ddb` (DynamoDBDocumentClient) and `TABLE_NAME`. Switches to a local endpoint automatically when `DYNAMODB_ENDPOINT` is set (SAM local / `env.json`); otherwise talks to real AWS DynamoDB. X-Ray capture is wired in here.
   - `s3.ts` — exports **two** S3 clients plus `BUCKET_NAME`/`PUBLIC_URL_BASE`, because local dev has two different notions of "the S3 endpoint": `s3` is for calls the Lambda itself makes over the network (`CopyObjectCommand`/`DeleteObjectCommand` in `approveImage.ts`) — like `DYNAMODB_ENDPOINT`, this must be resolvable *inside* the docker network, so locally `S3_ENDPOINT=http://minio:9000`. `s3Presign` is used only for `getSignedUrl()` (in `uploadImage.ts`) — since presigned-URL generation is offline SigV4 signing with no actual network call, and the resulting URL is handed to an *external* caller (the Expo app / curl / Bruno) outside the docker network, this one needs `S3_PRESIGN_ENDPOINT=http://localhost:9000` instead. Getting these two mixed up either breaks presigned uploads (client gets a URL it can't resolve) or breaks the approve endpoint (`ECONNREFUSED` from inside the Lambda container trying to reach `localhost`). In real AWS neither env var is set, so both clients resolve to the same real S3 endpoint — this split only matters locally.
-  - `http.ts` — response helpers (`json`, `badRequest`, `unauthorized`, `notFound`, `conflict`, `serverError`); all handlers should return through these rather than building `APIGatewayProxyResult` by hand.
+  - `http.ts` — response helpers (`json`, `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `serverError`); all handlers should return through these rather than building `APIGatewayProxyResult` by hand.
   - `powertools.ts` — single shared `logger` / `tracer` / `metrics` instances (module-scoped so they're reused across warm Lambda invocations). Always call `logger.addContext(context)` at the top of a handler.
   - `auth.ts` — exports `resolveExternalId(event)`, shared by every `profile` handler (see Profile section above) to resolve the caller's Cognito sub from Gateway-verified claims, with a SAM-local-only fallback for routes running without the authorizer enforced.
+  - `access.ts` — exports `requireRole(event, roles)`: `resolveExternalId()` + the GSI1 profile lookup, returning `{ user }` or a ready `{ response }` (`401` unidentified, `403` no profile / role not allowed). Used by the location handlers; handler tests mock it (`jest.mock('../../../src/lib/access', ...)`) the same way profile tests mock `auth`.
 - **Env config**: `env.json` supplies local-only overrides (`DYNAMODB_ENDPOINT`, `BUCKET_NAME`/`S3_ENDPOINT`/`S3_PRESIGN_ENDPOINT`/`S3_PUBLIC_URL_BASE`, debug log level, tracing disabled) consumed by `sam local start-api`; in real AWS these come from the CDK stack's Lambda environment instead.
-- **Auth**: Cognito user pool + client defined in the stack; API Gateway's `CognitoUserPoolsAuthorizer` gates specific methods via the `requireAuth` `MethodOptions`. In protected handlers, the caller's identity is read from `event.requestContext.authorizer?.claims?.sub` (falls back to `'local-dev'` when running under SAM local, since the authorizer isn't enforced there). There's no role/ownership enforcement yet — any authenticated user can mutate any place; `user.role` exists now (see Profile section above) but nothing currently gates place/category mutations on it.
+- **Auth**: Cognito user pool + client defined in the stack; API Gateway's `CognitoUserPoolsAuthorizer` gates specific methods via the `requireAuth` `MethodOptions`. In protected handlers, the caller's identity is read from `event.requestContext.authorizer?.claims?.sub` (falls back to `'local-dev'` when running under SAM local, since the authorizer isn't enforced there). Role enforcement exists only for location endpoints (owner/admin via `requireRole`); place/category mutations have none yet — any authenticated user can mutate any place; `user.role` exists now (see Profile section above) but nothing currently gates place/category mutations on it.
   - `GET /places` is the one route with **conditional** auth: the method itself has no Gateway authorizer (a REST API method's authorizer is all-or-nothing, and the default `?published=true` listing must stay public), so `places-list` verifies the `Authorization: Bearer <idToken>` header itself with `aws-jwt-verify`'s `CognitoJwtVerifier` (against `USER_POOL_ID`/`USER_POOL_CLIENT_ID`, passed to that function only) whenever `?published=false|all` is requested, returning 401 if it's missing or invalid. Under SAM local this check is skipped entirely (`isLocal = !!process.env.DYNAMODB_ENDPOINT` short-circuits `requireAuthenticated` to `true`), so `?published=false|all` works locally with no token and the handler never reaches out to a real Cognito user pool — consistent with the `local-dev` fallback used by other protected endpoints.
 
 ### Adding a new endpoint

@@ -1,0 +1,21 @@
+info:
+  name: remove
+  type: http
+
+http:
+  method: DELETE
+  url: "{{BASE}}/places/:placeId/locations/:locationId"
+  params:
+    - name: locationId
+      value: b89ece86-074f-4883-9e96-b291f4ee9992
+      type: path
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

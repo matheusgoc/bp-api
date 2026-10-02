@@ -1,0 +1,44 @@
+info:
+  name: update
+  type: http
+  seq: 1
+
+http:
+  method: PUT
+  url: "{{BASE}}/places/:placeId/locations/:locationId"
+  params:
+    - name: locationId
+      value: 68a222d1-db7e-4095-86fa-86b245d48b35
+      type: path
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "name": "110 Norte",
+        "city": "Brasília",
+        "state": "DF",
+        "address": "SCLN 110 BLOCO D LOJA 63",
+        "postalCode": "70753540",
+        "lat": -15.758867400044137,
+        "lon": -47.88822793575051,
+        "phone": "61998887733",
+        "isWhatsapp": true,
+        "email": "asanorte@rutsacai.com.br",
+        "workingHours": [
+            { "weekDay": "Segunda", "start": "09:00", "end": "18:00" },
+            { "weekDay": "Terça", "start": "09:00", "end": "18:00" },
+            { "weekDay": "Quarta", "start": "09:00", "end": "18:00" },
+            { "weekDay": "Quinta", "start": "09:00", "end": "18:00" },
+            { "weekDay": "Sexta", "start": "09:00", "end": "18:00" }
+          ]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

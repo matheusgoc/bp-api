@@ -1,3 +1,5 @@
+import type { PlaceLocationModel } from './location';
+
 export enum PlaceStatus {
   DRAFT = 'draft',
   REVIEWING = 'reviewing',
@@ -14,7 +16,7 @@ export interface PlaceModel {
   photo: string;
   logo?: string;
   website?: string;
-  locations: never[];
+  locations?: PlaceLocationModel[];
   offers: never[];
   status: PlaceStatus;
   reason: string;
@@ -50,7 +52,7 @@ export interface PlaceItem {
   updatedAt: string;
 }
 
-export const toPlaceModel = (item: PlaceItem): PlaceModel => ({
+export const toPlaceModel = (item: PlaceItem, locations?: PlaceLocationModel[]): PlaceModel => ({
   id: item.id,
   name: item.name,
   description: item.description || undefined,
@@ -58,7 +60,7 @@ export const toPlaceModel = (item: PlaceItem): PlaceModel => ({
   photo: item.photo,
   logo: item.logo || undefined,
   website: item.website || undefined,
-  locations: [],
+  locations,
   offers: [],
   status: item.status,
   reason: item.reason,
