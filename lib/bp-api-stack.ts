@@ -34,8 +34,8 @@ export class BpApiStack extends cdk.Stack {
       sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
     });
 
-    // Always-present partition key (GSI2PK='PLACE' on every place item) — powers
-    // the admin "unpublished"/"all" listing, which has no visibility gate.
+    // Always-present partition key (e.g. GSI2PK='PLACE' on every place item) — powers
+    // listings with no visibility gate (admin "unpublished"/"all" places, a place's offers).
     table.addGlobalSecondaryIndex({
       indexName: 'GSI2',
       partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
@@ -199,6 +199,22 @@ export class BpApiStack extends cdk.Stack {
     table.grantReadWriteData(removeLocationFn);
     table.grantReadData(previewLocationFn);
 
+    // offer
+
+    const addOfferFn = makeFunction('offers-add');
+    const updateOfferFn = makeFunction('offers-update');
+    const cancelOfferFn = makeFunction('offers-cancel');
+    const previewOfferFn = makeFunction('offers-preview');
+    const listOffersFn = makeFunction('offers-list');
+
+    // add/update/cancel read the caller's profile (role check) and the place partition
+    // (place/location summaries) besides writing the offer
+    table.grantReadWriteData(addOfferFn);
+    table.grantReadWriteData(updateOfferFn);
+    table.grantReadWriteData(cancelOfferFn);
+    table.grantReadData(previewOfferFn);
+    table.grantReadData(listOffersFn);
+
     // profile
 
     const signupProfileFn = makeFunction('profile-signup');
@@ -300,6 +316,17 @@ export class BpApiStack extends cdk.Stack {
     placeLocationById.addMethod('GET', new apigw.LambdaIntegration(previewLocationFn), requireAuth); // GET /places/{id}/locations/{locationId}
     placeLocationById.addMethod('PUT', new apigw.LambdaIntegration(updateLocationFn), requireAuth); // PUT /places/{id}/locations/{locationId}
     placeLocationById.addMethod('DELETE', new apigw.LambdaIntegration(removeLocationFn), requireAuth); // DELETE /places/{id}/locations/{locationId}
+
+    // offer
+
+    const placeOffers = placeById.addResource('offers');
+    placeOffers.addMethod('GET', new apigw.LambdaIntegration(listOffersFn), requireAuth); // GET /places/{id}/offers
+    placeOffers.addMethod('POST', new apigw.LambdaIntegration(addOfferFn), requireAuth); // POST /places/{id}/offers[?location=<locationId>]
+
+    const placeOfferById = placeOffers.addResource('{offerId}');
+    placeOfferById.addMethod('GET', new apigw.LambdaIntegration(previewOfferFn), requireAuth); // GET /places/{id}/offers/{offerId}
+    placeOfferById.addMethod('PUT', new apigw.LambdaIntegration(updateOfferFn), requireAuth); // PUT /places/{id}/offers/{offerId}
+    placeOfferById.addMethod('DELETE', new apigw.LambdaIntegration(cancelOfferFn), requireAuth); // DELETE /places/{id}/offers/{offerId}
 
     // profile
 

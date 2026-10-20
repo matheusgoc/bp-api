@@ -1,0 +1,22 @@
+info:
+  name: show
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: "{{BASE}}/places/:placeId/offers/:offerId"
+  params:
+    - name: offerId
+      value: ab8d21a9-7431-4e67-8e16-2c2439940fd1
+      type: path
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

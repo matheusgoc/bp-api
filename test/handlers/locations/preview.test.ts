@@ -1,6 +1,6 @@
 import type { Context } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
-import { GetCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../../../src/lib/dynamo';
 import { forbidden } from '../../../src/lib/http';
 
@@ -11,6 +11,7 @@ jest.mock('../../../src/lib/access', () => ({
 
 import { handler } from '../../../src/handlers/locations/preview';
 import { UserRole } from '../../../src/models/user';
+import { FUTURE, makeOffer } from '../offers/fixtures';
 import { event, makeLocation } from './fixtures';
 
 const ddbMock = mockClient(ddb);
@@ -22,6 +23,7 @@ describe('GET /places/{id}/locations/{locationId}', () => {
     ddbMock.reset();
     requireRole.mockReset();
     requireRole.mockResolvedValue({ user: { id: 'u1', role: UserRole.OWNER } });
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
   });
 
   it('returns the location', async () => {
@@ -31,9 +33,31 @@ describe('GET /places/{id}/locations/{locationId}', () => {
 
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body);
-    expect(body).toMatchObject({ id: 'l1', name: 'Centro', lat: -19.9, lon: -43.9, workingHours: [] });
+    expect(body).toMatchObject({ id: 'l1', name: 'Centro', lat: -19.9, lon: -43.9, workingHours: [], offers: [] });
     expect(body.phone).toBeUndefined();
     expect(ddbMock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({ PK: 'PLACE#p1', SK: 'LOCATION#l1' });
+  });
+
+  it("includes only that location's visible offers", async () => {
+    ddbMock.on(GetCommand).resolves({ Item: makeLocation() });
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        makeOffer({ id: 'mine', locationId: 'l1' }),
+        makeOffer({ id: 'not-started', locationId: 'l1', start: FUTURE }),
+        makeOffer({ id: 'other-location', locationId: 'l2' }),
+        makeOffer({ id: 'place-level' }),
+      ],
+    });
+
+    const result = await handler(event(params), context);
+
+    const { offers } = JSON.parse(result.body);
+    expect(offers.map((offer: { id: string }) => offer.id)).toEqual(['mine']);
+    expect(offers[0].location).toBeUndefined();
+    expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
+      IndexName: 'GSI1',
+      ExpressionAttributeValues: { ':pk': 'OFFER#ACTIVE#PLACE#p1' },
+    });
   });
 
   it('returns 404 when missing', async () => {

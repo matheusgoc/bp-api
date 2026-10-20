@@ -1,0 +1,30 @@
+info:
+  name: add location
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{BASE}}/places/:placeId/offers?location=68a222d1-db7e-4095-86fa-86b245d48b35"
+  params:
+    - name: location
+      value: 68a222d1-db7e-4095-86fa-86b245d48b35
+      type: query
+      description: location id — omit to create a place offer
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  body:
+    type: json
+    data: |
+      {
+        "title": "Free topping on weekdays",
+        "start": "2026-10-01T00:00:00-03:00"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

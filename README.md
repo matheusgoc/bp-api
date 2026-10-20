@@ -223,8 +223,8 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 - Every Lambda has **X-Ray tracing**, a dedicated **CloudWatch log group** (1-week retention), and **Lambda Powertools** (structured logs, tracer, metrics).
 - Handlers are bundled per-function with **esbuild** into `dist/<name>/index.js`. Only the DynamoDB-family AWS SDK v3 packages are excluded from the bundle (they ship with the runtime) — other `@aws-sdk/*` packages, like the S3 client/presigner used for image uploads, are bundled in.
 - Place `photo`/`logo` uploads go directly to an **S3 bucket** via a presigned PUT URL (`PATCH /places/{id}/images/{type}`) — see [Images (S3)](#images-s3).
-- DynamoDB uses single-table design: places are `PK=PLACE#<id>, SK=METADATA`. `GSI1PK` is **sparse** — it's only set to `PLACE#PUBLISHED` while a place is published, so `GET /places` is a plain query against `GSI1` with no filter expression, and naturally excludes drafts/unpublished places. `GSI2PK` is always `'PLACE'` (set once at creation) and backs the unrestricted `?published=all`/`?published=false` listing views. **category** reuses the exact same pattern (`PK=CATEGORY#<id>`, `GSI1PK='CATEGORY#ENABLED'` sparse on `enabled`, `GSI2PK='CATEGORY'` always) in the same table — no schema change was needed. **Locations** live in their place's partition (`PK=PLACE#<placeId>, SK=LOCATION#<id>`, no GSI attributes), so `GET /places/{id}` fetches a place and all its locations with a single query.
-- The domain model is **place** (central), **location**, **offer**, **category**, **user** — a place has many locations and offers, one category, and one or more owning users. **place**, **category**, **user** (profile), and **location** are implemented so far; **offer** is planned (see Roadmap).
+- DynamoDB uses single-table design: places are `PK=PLACE#<id>, SK=METADATA`. `GSI1PK` is **sparse** — it's only set to `PLACE#PUBLISHED` while a place is published, so `GET /places` is a plain query against `GSI1` with no filter expression, and naturally excludes drafts/unpublished places. `GSI2PK` is always `'PLACE'` (set once at creation) and backs the unrestricted `?published=all`/`?published=false` listing views. **category** reuses the exact same pattern (`PK=CATEGORY#<id>`, `GSI1PK='CATEGORY#ENABLED'` sparse on `enabled`, `GSI2PK='CATEGORY'` always) in the same table — no schema change was needed. **Locations** live in their place's partition (`PK=PLACE#<placeId>, SK=LOCATION#<id>`, no GSI attributes), so `GET /places/{id}` fetches a place and all its locations with a single query. **Offers** are their own items (`PK=OFFER#<id>, SK=METADATA`) — kept out of the place partition since they're never deleted and would pile up there — reached through the same two index patterns: a sparse `GSI1PK=OFFER#ACTIVE#PLACE#<placeId>` (only while active, `GSI1SK` = the offer's end) that the previews query for live offers, and an always-present `GSI2PK=OFFER#PLACE#<placeId>` (`GSI2SK=createdAt`) behind the paginated offers list.
+- The domain model is **place** (central), **location**, **offer**, **category**, **user** — a place has many locations and offers, one category, and one or more owning users. An offer always belongs to a place and optionally to one of its locations. All five are implemented.
 
 ## Endpoints
 
@@ -244,7 +244,7 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 | PATCH  | `/categories/reorder`   | JWT required | Rewrite `order` for the given category ids to their index in the body array (0 = first). |
 | GET    | `/places`               | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`). |
 | POST   | `/places`               | JWT required | Create a place. Always created as `status: draft`, `published: false`. |
-| GET    | `/places/{id}`          | Public       | Preview a single place, including its `locations` (oldest first). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
+| GET    | `/places/{id}`          | Public       | Preview a single place, including its `locations` (oldest first) and visible `offers` (see below). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
 | PUT    | `/places/{id}`          | JWT required | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
 | PATCH  | `/places/{id}/publish`  | JWT required | Publish a place. Only succeeds when `status === active`. |
 | PATCH  | `/places/{id}/unpublish`| JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
@@ -255,10 +255,17 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 | GET    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Preview a single location (for populating the edit form). `404` if missing or soft-deleted. |
 | PUT    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Replace a location's fields — full replacement, so omitted optional fields are cleared. Resets the place's `status` to `reviewing`. `404` if missing or soft-deleted. |
 | DELETE | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Soft-delete a location (`deleted: true`; never hard-deleted). Resets the place's `status` to `reviewing`. |
+| POST   | `/places/{id}/offers`   | JWT + owner/admin | Create an offer (body: `{ title, discount?, start?, end?, status? }`, see below). A place offer, or a location offer with `?location=<locationId>` — the link is fixed at creation. `status` defaults to `active`. `404` if the place doesn't exist, `400` if the location doesn't (or is soft-deleted). |
+| GET    | `/places/{id}/offers`   | JWT + owner/admin | List every offer of the place, any status, newest first. Paginated: `?take` (default 20, max 100) and `?cursor` (`meta.nextCursor` of the previous page). |
+| GET    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Preview a single offer, any status. |
+| PUT    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Replace an offer's `title`/`discount`/`start`/`end` — full replacement, so omitted optional fields are cleared. `status` is optional: omitted keeps the current one, `active` reactivates a canceled offer. |
+| DELETE | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Cancel an offer (`status: canceled`; never deleted). |
 
 JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. **SAM local does not enforce it** — those routes work locally without a token.
 
-"owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations.
+"owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations and offers.
+
+**Offers**: `discount` is a positive number; `start`/`end` are ISO 8601 date-times with a timezone offset (e.g. `2026-10-31T23:59:59-03:00`), stored in UTC. Only `active` and `canceled` are ever stored — an active offer is shown as `expired` once its `end` is reached. Offers endpoints return each offer with a `place` (`id`/`name`/`logo`) and, for location offers, a `location` (`id`/`name`/`city`/`state`) summary. `GET /places/{id}` lists the *visible* offers — active, started (`start` reached) and not expired — place offers in its top-level `offers`, location offers under their location's `offers`; `GET /places/{id}/locations/{locationId}` includes that location's visible offers too.
 
 ## Project structure
 
@@ -267,11 +274,11 @@ bin/bp-api.ts                  CDK app entry point
 lib/bp-api-stack.ts            Infrastructure (API GW, Cognito, DynamoDB, Lambdas)
 src/handlers/                  Lambda entry points (one bundle each, grouped by entity)
 src/models/                    Per-entity model types (client-facing, DynamoDB item, mapper)
-src/lib/                       Shared: Powertools, DynamoDB client, S3 client, HTTP helpers, auth/role checks
+src/lib/                       Shared: Powertools, DynamoDB client, S3 client, HTTP helpers, auth/role checks, pagination, place reads
 scripts/build.mjs              esbuild bundler (--watch for live reload)
 scripts/create-local-table.mjs Local DynamoDB table bootstrap
 scripts/create-local-bucket.mjs Local MinIO bucket bootstrap
-test/                          Jest: handler tests + CDK assertions
+test/                          Jest: handler/model/lib tests + CDK assertions
 docker-compose.yml             DynamoDB Local (:8000) + admin UI (:8001) + MinIO (:9000, console :9001)
 env.json                       Env overrides for SAM local
 ```
@@ -282,6 +289,5 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 
 - CI/CD with CodePipeline (CDK Pipelines) — deploy on push
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
-- Offer entity/feature (the last of the five domain entities)
-- Role and ownership-based authorization on place/category endpoints, plus per-place ownership on location endpoints (these are only role-gated to owner/admin today) — `PATCH /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
+- Role and ownership-based authorization on place/category endpoints, plus per-place ownership on location and offer endpoints (these are only role-gated to owner/admin today) — `PATCH /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
 - Request validation with API Gateway models or zod

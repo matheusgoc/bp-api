@@ -1,3 +1,5 @@
+import type { OfferModel } from './offer';
+
 export interface LocationWorkingHours {
   weekDay: string;
   start: string;
@@ -17,6 +19,8 @@ export interface PlaceLocationModel {
   isWhatsapp?: boolean;
   email?: string;
   workingHours: LocationWorkingHours[];
+  // the location's visible offers — only populated by place preview and location preview
+  offers?: OfferModel[];
   // only present (true) on soft-deleted locations, which are returned solely
   // by GET /places/{id}?deleted=true
   deleted?: true;
@@ -60,6 +64,7 @@ export const locationKey = (placeId: string, id: string) => ({
 
 export const toLocationModel = (
   item: Omit<LocationItem, 'PK' | 'SK' | 'placeId' | 'deletedAt' | 'createdAt' | 'createdBy' | 'updatedAt'>,
+  offers?: OfferModel[],
 ): PlaceLocationModel => ({
   id: item.id,
   name: item.name,
@@ -73,5 +78,6 @@ export const toLocationModel = (
   isWhatsapp: item.isWhatsapp,
   email: item.email || undefined,
   workingHours: item.workingHours ?? [],
+  offers,
   ...(item.deleted ? { deleted: true as const } : {}),
 });

@@ -3,13 +3,12 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, serverError, unauthorized } from '../../lib/http';
+import { decodeCursor, encodeCursor, parseTake } from '../../lib/pagination';
 import { logger } from '../../lib/powertools';
 import { PlaceItem, toPlaceModel } from '../../models/place';
 
 type PublishedFilter = 'true' | 'false' | 'all';
 const VALID_FILTERS: PublishedFilter[] = ['true', 'false', 'all'];
-const DEFAULT_TAKE = 20;
-const MAX_TAKE = 100;
 
 const isLocal = !!process.env.DYNAMODB_ENDPOINT;
 
@@ -37,33 +36,6 @@ const requireAuthenticated = async (event: APIGatewayProxyEvent): Promise<boolea
   }
 };
 
-
-const parsePositiveInt = (value: string | undefined, fallback: number): number | undefined => {
-  if (value === undefined) return fallback;
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 1 ? n : undefined;
-};
-
-// generates a base64 pagination cursor tyed to filter and key (DynamoDB's own LastEvaluatedKey)
-const encodeCursor = (filter: PublishedFilter, key: Record<string, unknown>): string =>
-  Buffer.from(JSON.stringify({ filter, key })).toString('base64url');
-
-// decodes the cursor to retieves the key
-const decodeCursor = (
-  cursor: string,
-  filter: PublishedFilter,
-): Record<string, unknown> | undefined => {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (parsed.filter !== filter || typeof parsed.key !== 'object' || parsed.key === null) {
-      return undefined;
-    }
-    return parsed.key as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-};
-
 /**
  * list places
  * 
@@ -79,9 +51,9 @@ export const handler = async (
 ): Promise<APIGatewayProxyResult> => {
   logger.addContext(context);
 
-  const take = parsePositiveInt(event.queryStringParameters?.take, DEFAULT_TAKE);
-  if (take === undefined) return badRequest('"take" must be a positive integer');
-  if (take > MAX_TAKE) return badRequest(`"take" must not exceed ${MAX_TAKE}`);
+  const parsedTake = parseTake(event.queryStringParameters?.take);
+  if ('error' in parsedTake) return badRequest(parsedTake.error);
+  const { take } = parsedTake;
 
   const filter = (event.queryStringParameters?.published ?? 'true') as PublishedFilter;
   if (!VALID_FILTERS.includes(filter)) {

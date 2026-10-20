@@ -16,7 +16,7 @@ describe('POST /places', () => {
     ddbMock.reset();
   });
 
-  it('creates a place in draft status, unpublished, with no locations and empty offers', async () => {
+  it('creates a place in draft status, unpublished, with no locations or offers', async () => {
     ddbMock.on(GetCommand).resolves({ Item: { PK: 'CATEGORY#cat-1', SK: 'METADATA' } });
     ddbMock.on(PutCommand).resolves({});
 
@@ -32,7 +32,7 @@ describe('POST /places', () => {
     expect(body.status).toBe(PlaceStatus.DRAFT);
     expect(body.published).toBe(false);
     expect(body.locations).toBeUndefined();
-    expect(body.offers).toEqual([]);
+    expect(body.offers).toBeUndefined();
 
     const getCall = ddbMock.commandCalls(GetCommand)[0];
     expect(getCall.args[0].input.Key).toEqual({ PK: 'CATEGORY#cat-1', SK: 'METADATA' });

@@ -1,0 +1,23 @@
+info:
+  name: list
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{BASE}}/places/:placeId/offers?take=20"
+  params:
+    - name: take
+      value: "20"
+      type: query
+      description: page size — default 20, max 100
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,28 @@
+info:
+  name: add
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{BASE}}/places/:placeId/offers"
+  params:
+    - name: placeId
+      value: 295f833e-9d79-4e68-803f-a22aad2f511e
+      type: path
+  body:
+    type: json
+    data: |
+      {
+        "title": "15% off on açaí bowls",
+        "discount": 15,
+        "start": "2026-10-01T00:00:00-03:00",
+        "end": "2026-12-31T23:59:59-03:00"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
