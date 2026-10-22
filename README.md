@@ -228,44 +228,80 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 
 ## Endpoints
 
-| Method | Path                    | Auth         | Description |
-|--------|-------------------------|--------------|-------------|
-| GET    | `/health`               | Public       | Health check. |
-| POST   | `/profile`              | JWT required | Create the caller's app-level profile — called by the app after Amplify Cognito signup/confirm/signin. Requires `name`/`email`; `phone`/`isWhatsapp`/`dob`/`gender` optional. Created as `role: customer`, `subscriptionStatus: not_applied`. `409` if the caller already has a profile. |
-| GET    | `/profile`              | JWT required | Preview the caller's own profile (resolved from the token, never a path parameter). |
-| PUT    | `/profile`              | JWT required | Update the caller's own `name`/`email`/`phone`/`dob`/`gender`/`isWhatsapp`. |
-| PATCH  | `/profile/convert`      | JWT required | Convert the caller to `owner` (no body needed). If the caller is an `admin` and the body has `{ id, type? }`, converts that *other* user instead to `type` (any role, default `owner`) — `400` if `id` is the caller's own, `404` if the user doesn't exist. Non-admins' `id`/`type` are ignored. |
-| GET    | `/categories`           | Public       | List categories. `?enabled=` (`true`/`false`/`all`) |
-| POST   | `/categories`           | JWT required | Create a category. Always created `enabled: true` (no draft state). |
-| GET    | `/categories/{id}`      | Public       | Preview a single category. |
-| PUT    | `/categories/{id}`      | JWT required | Update `name`/`description` only. |
-| PATCH  | `/categories/{id}/enable` | JWT required | Set `enabled: true`. |
-| PATCH  | `/categories/{id}/disable`| JWT required | Set `enabled: false`. |
-| PATCH  | `/categories/reorder`   | JWT required | Rewrite `order` for the given category ids to their index in the body array (0 = first). |
-| GET    | `/places`               | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`). |
-| POST   | `/places`               | JWT required | Create a place. Always created as `status: draft`, `published: false`. |
-| GET    | `/places/{id}`          | Public       | Preview a single place, including its `locations` (oldest first) and visible `offers` (see below). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
-| PUT    | `/places/{id}`          | JWT required | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
-| PATCH  | `/places/{id}/publish`  | JWT required | Publish a place. Only succeeds when `status === active`. |
-| PATCH  | `/places/{id}/unpublish`| JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
-| PATCH  | `/places/{id}/review`   | JWT required | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
-| PATCH  | `/places/{id}/images/{type}` | JWT required | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
+JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. (**SAM local does not enforce it** — those routes work locally without a token.)
+
+The "owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations and offers.
+
+### Health
+
+| Method | Path      | Auth   | Description |
+|--------|-----------|--------|-------------|
+| GET    | `/health` | Public | Health check. |
+
+### Profile
+
+| Method | Path               | Auth         | Description |
+|--------|--------------------|--------------|-------------|
+| POST   | `/profile`         | JWT required | Create the caller's app-level profile — called by the app after Amplify Cognito signup/confirm/signin. Requires `name`/`email`; `phone`/`isWhatsapp`/`dob`/`gender` optional. Created as `role: customer`, `subscriptionStatus: not_applied`. `409` if the caller already has a profile. |
+| GET    | `/profile`         | JWT required | Preview the caller's own profile (resolved from the token, never a path parameter). |
+| PUT    | `/profile`         | JWT required | Update the caller's own `name`/`email`/`phone`/`dob`/`gender`/`isWhatsapp`. |
+| PATCH  | `/profile/convert` | JWT required | Convert the caller to `owner` (no body needed). If the caller is an `admin` and the body has `{ id, type? }`, converts that *other* user instead to `type` (any role, default `owner`) — `400` if `id` is the caller's own, `404` if the user doesn't exist. Non-admins' `id`/`type` are ignored. |
+
+### Categories
+
+| Method | Path                       | Auth         | Description |
+|--------|----------------------------|--------------|-------------|
+| GET    | `/categories`              | Public       | List categories. `?enabled=` (`true`/`false`/`all`) |
+| POST   | `/categories`              | JWT required | Create a category. Always created `enabled: true` (no draft state). |
+| GET    | `/categories/{id}`         | Public       | Preview a single category. |
+| PUT    | `/categories/{id}`         | JWT required | Update `name`/`description` only. |
+| PATCH  | `/categories/{id}/enable`  | JWT required | Set `enabled: true`. |
+| PATCH  | `/categories/{id}/disable` | JWT required | Set `enabled: false`. |
+| PATCH  | `/categories/reorder`      | JWT required | Rewrite `order` for the given category ids to their index in the body array (0 = first). |
+
+### Places
+
+| Method | Path                                 | Auth         | Description |
+|--------|--------------------------------------|--------------|-------------|
+| GET    | `/places`                            | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`). |
+| POST   | `/places`                            | JWT required | Create a place. Always created as `status: draft`, `published: false`. |
+| GET    | `/places/{id}`                       | Public       | Preview a single place, including its `locations` (oldest first) and visible `offers` (see [Place offers](#place-offers)). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
+| PUT    | `/places/{id}`                       | JWT required | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
+| PATCH  | `/places/{id}/publish`               | JWT required | Publish a place. Only succeeds when `status === active`. |
+| PATCH  | `/places/{id}/unpublish`             | JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
+| PATCH  | `/places/{id}/review`                | JWT required | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
+| PATCH  | `/places/{id}/images/{type}`         | JWT required | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
 | PATCH  | `/places/{id}/images/{type}/approve` | JWT required | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to its live key, then clears the draft. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
-| POST   | `/places/{id}/locations` | JWT + owner/admin | Add a location to the place (body: `PlaceLocationModel`, see below). Resets the place's `status` to `reviewing`. `404` if the place doesn't exist. |
-| GET    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Preview a single location (for populating the edit form). `404` if missing or soft-deleted. |
+
+### Place locations
+
+| Method | Path                                  | Auth              | Description |
+|--------|---------------------------------------|-------------------|-------------|
+| POST   | `/places/{id}/locations`              | JWT + owner/admin | Add a location to the place (body: `PlaceLocationModel`). Resets the place's `status` to `reviewing`. `404` if the place doesn't exist. |
+| GET    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Preview a single location (for populating the edit form), including its visible offers. `404` if missing or soft-deleted. |
 | PUT    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Replace a location's fields — full replacement, so omitted optional fields are cleared. Resets the place's `status` to `reviewing`. `404` if missing or soft-deleted. |
 | DELETE | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Soft-delete a location (`deleted: true`; never hard-deleted). Resets the place's `status` to `reviewing`. |
-| POST   | `/places/{id}/offers`   | JWT + owner/admin | Create an offer (body: `{ title, discount?, start?, end?, status? }`, see below). A place offer, or a location offer with `?location=<locationId>` — the link is fixed at creation. `status` defaults to `active`. `404` if the place doesn't exist, `400` if the location doesn't (or is soft-deleted). |
-| GET    | `/places/{id}/offers`   | JWT + owner/admin | List every offer of the place, any status, newest first. Paginated: `?take` (default 20, max 100) and `?cursor` (`meta.nextCursor` of the previous page). |
+
+### Place offers
+
+| Method | Path                            | Auth              | Description |
+|--------|---------------------------------|-------------------|-------------|
+| POST   | `/places/{id}/offers`           | JWT + owner/admin | Create an offer (body: `{ title, discount?, start?, end?, status? }`, see below). A place offer, or a location offer with `?location=<locationId>` — the link is fixed at creation. `status` defaults to `active`. `404` if the place doesn't exist, `400` if the location doesn't (or is soft-deleted). |
+| GET    | `/places/{id}/offers`           | JWT + owner/admin | List every offer of the place, any status, newest first. Paginated: `?take` (default 20, max 100) and `?cursor` (`meta.nextCursor` of the previous page). |
 | GET    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Preview a single offer, any status. |
 | PUT    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Replace an offer's `title`/`discount`/`start`/`end` — full replacement, so omitted optional fields are cleared. `status` is optional: omitted keeps the current one, `active` reactivates a canceled offer. |
 | DELETE | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Cancel an offer (`status: canceled`; never deleted). |
 
-JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. **SAM local does not enforce it** — those routes work locally without a token.
-
-"owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations and offers.
-
-**Offers**: `discount` is a positive number; `start`/`end` are ISO 8601 date-times with a timezone offset (e.g. `2026-10-31T23:59:59-03:00`), stored in UTC. Only `active` and `canceled` are ever stored — an active offer is shown as `expired` once its `end` is reached. Offers endpoints return each offer with a `place` (`id`/`name`/`logo`) and, for location offers, a `location` (`id`/`name`/`city`/`state`) summary. `GET /places/{id}` lists the *visible* offers — active, started (`start` reached) and not expired — place offers in its top-level `offers`, location offers under their location's `offers`; `GET /places/{id}/locations/{locationId}` includes that location's visible offers too.
+> [!NOTE]
+> - `discount` is a positive number
+> - `start`/`end` are ISO 8601 date-times with a timezone offset (e.g. `2026-10-31T23:59:59-03:00`), stored in UTC. 
+> - only `active` and `canceled` status are ever stored
+> - an active offer is shown as `expired` once its `end` is reached. 
+> - offers endpoints return each offer with a `place` (`id`/`name`/`logo`)
+> - for location offers, a `location` (`id`/`name`/`city`/`state`) summary.
+> - published offers are the ones with `active` status that has been started (when `start` are reached) and are not expired
+> - The publice endpoint `GET /places/{id}` lists *published* place offers in its top-level `offers` attribute and location offers under `locations.offers` attribute 
+> - `GET /places/{id}/locations/{locationId}` list all offers
 
 ## Project structure
 
