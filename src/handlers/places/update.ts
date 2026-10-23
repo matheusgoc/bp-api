@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { requirePlaceAccess } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
@@ -18,7 +19,7 @@ const FIELDS: (keyof PlaceDto)[] = ['name', 'description', 'category', 'website'
 /**
  * Update Place
  * 
- * PUT /places/{id} (Cognito-protected)
+ * PUT /places/{id} (Cognito-protected, place owner/admin only)
  * every successful update pushes status to reviewing
  * published flag remains untouched
  */
@@ -62,6 +63,9 @@ export const handler = async (
   sets.push('#updatedAt = :updatedAt');
 
   try {
+    const access = await requirePlaceAccess(event, id);
+    if ('response' in access) return access.response;
+
     if (placeDto.category !== undefined) {
       const categoryResult = await ddb.send(
         new GetCommand({

@@ -25,19 +25,24 @@ describe('BpApiStack', () => {
     });
   });
 
+  it('lets anyone read every place image, live and draft', () => {
+    const policies = JSON.stringify(template.findResources('AWS::S3::BucketPolicy'));
+    expect(policies).toContain('/places/*"');
+  });
+
   it('creates a Cognito user pool and client', () => {
     template.resourceCountIs('AWS::Cognito::UserPool', 1);
     template.resourceCountIs('AWS::Cognito::UserPoolClient', 1);
   });
 
-  it('creates the thirty Lambda handlers with tracing enabled', () => {
+  it('creates the thirty-one Lambda handlers with tracing enabled', () => {
     const functions = template.findResources('AWS::Lambda::Function', {
       Properties: {
         Runtime: 'nodejs22.x',
         TracingConfig: { Mode: 'Active' },
       },
     });
-    expect(Object.keys(functions)).toHaveLength(30);
+    expect(Object.keys(functions)).toHaveLength(31);
   });
 
   it('creates a REST API with a Cognito authorizer', () => {
@@ -51,13 +56,13 @@ describe('BpApiStack', () => {
     const protectedMethods = template.findResources('AWS::ApiGateway::Method', {
       Properties: { AuthorizationType: 'COGNITO_USER_POOLS' },
     });
-    // POST /places, PUT /places/{id}, POST .../publish, POST .../unpublish, POST .../review,
+    // POST /places, PUT /places/{id}, POST .../publish, POST .../unpublish, POST .../review, PATCH .../grant,
     // POST .../images/{type}, POST .../images/{type}/approve, POST /categories,
     // PUT /categories/{id}, POST .../enable, POST .../disable, POST .../reorder,
     // POST /profile, GET /profile, PUT /profile, PATCH /profile/convert,
     // POST /places/{id}/locations, GET/PUT/DELETE /places/{id}/locations/{locationId},
     // GET/POST /places/{id}/offers, GET/PUT/DELETE /places/{id}/offers/{offerId}
-    expect(Object.keys(protectedMethods)).toHaveLength(25);
+    expect(Object.keys(protectedMethods)).toHaveLength(26);
 
     const publicMethods = template.findResources('AWS::ApiGateway::Method', {
       Properties: { AuthorizationType: 'NONE' },

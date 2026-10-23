@@ -177,12 +177,12 @@ Your AWS credentials need `dynamodb:PutItem` on that table.
 File uploads (place `photo`/`logo`, and any future upload location) follow a **presign → upload → approve** flow, going straight from the mobile app to S3 rather than through Lambda:
 
 1. **Presign** — an endpoint like `PATCH /places/{id}/images/{type}` returns a short-lived presigned PUT URL for a *draft* key.
-2. **Upload** — the app PUTs the file bytes directly to that URL (e.g. with `expo-file-system`'s `uploadAsync`); the draft key is recorded on the entity but never exposed through the public API.
-3. **Approve** — an endpoint like `PATCH /places/{id}/images/{type}/approve` copies the object server-side from its draft key to its live, public key and only then clears the draft. This is the hook point for future image verification/moderation before anything goes public.
+2. **Upload** — the app PUTs the file bytes directly to that URL (e.g. with `expo-file-system`'s `uploadAsync`); the draft URL is recorded on the entity (`draftPhoto`/`draftLogo`) and returned in place responses, so the app's owner/admin place management view can show the pending image.
+3. **Approve** — an endpoint like `PATCH /places/{id}/images/{type}/approve` copies the object server-side from its draft key to a live key and only then clears the draft. Draft and live keys are versioned (`places/{id}/{type}-draft-{version}.{ext}`, `places/{id}/{type}-{version}.{ext}`), so every upload and every approval gets a new URL — clients and caches never keep showing an old image — and the object each one replaces is deleted. This is the hook point for future image verification/moderation before an image becomes the place's public `photo`/`logo`.
 
 **Local**: MinIO (S3-compatible) runs via `docker compose up -d`, bucket created by `bun local:bucket`. Two env vars point at it for different reasons — `S3_ENDPOINT` (server-side calls like approve) must resolve inside the docker network (`http://minio:9000`); `S3_PRESIGN_ENDPOINT` (baked into presigned URLs) must resolve from the host (`http://localhost:9000`).
 
-**Production (AWS)**: the bucket is provisioned by CDK with CORS enabled and public read scoped to live keys only — draft keys stay private until promoted via approve.
+**Production (AWS)**: the bucket is provisioned by CDK with CORS enabled and public read on the `places/*` prefix — every place image, live and draft. The public `photo`/`logo` fields only change on approve, but a draft is fetchable by its URL before that.
 
 ## Test
 
@@ -230,7 +230,7 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 
 JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. (**SAM local does not enforce it** — those routes work locally without a token.)
 
-The "owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. There's no per-place ownership check yet — any owner can manage any place's locations and offers.
+The "owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. The "place owner/admin" routes go one step further: an owner must also be one of the place's owners (its internal `ownerBy` list, set to the creator by `POST /places` and extended by `PATCH /places/{id}/grant`) — `403` otherwise, `404` if the place doesn't exist. Admins can manage every place. Locations and offers follow their place's ownership. The "admin" routes accept admins only.
 
 ### Health
 
@@ -263,34 +263,36 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 
 | Method | Path                                 | Auth         | Description |
 |--------|--------------------------------------|--------------|-------------|
-| GET    | `/places`                            | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`). |
-| POST   | `/places`                            | JWT required | Create a place. Always created as `status: draft`, `published: false`. |
+| GET    | `/places`                            | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`) — for everyone. Paginated: `?take` (default 20, max 100) and `?cursor`. |
+| GET    | `/places?published=false\|all`       | JWT + owner/admin | List unpublished places only (`false`) or every place regardless of visibility (`all`). An admin gets every place (via `GSI2`); an owner gets only the places they own (whose `ownerBy` lists them). The JWT is verified inside the handler rather than by the Gateway authorizer; `401` if it's missing or invalid, `403` unless the caller is an owner/admin. |
+| POST   | `/places`                            | JWT + owner/admin | Create a place, owned by the caller. Always created as `status: draft`, `published: false`. |
 | GET    | `/places/{id}`                       | Public       | Preview a single place, including its `locations` (oldest first) and visible `offers` (see [Place offers](#place-offers)). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
-| PUT    | `/places/{id}`                       | JWT required | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
-| PATCH  | `/places/{id}/publish`               | JWT required | Publish a place. Only succeeds when `status === active`. |
-| PATCH  | `/places/{id}/unpublish`             | JWT required | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
-| PATCH  | `/places/{id}/review`                | JWT required | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
-| PATCH  | `/places/{id}/images/{type}`         | JWT required | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
-| PATCH  | `/places/{id}/images/{type}/approve` | JWT required | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to its live key, then clears the draft. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
+| PUT    | `/places/{id}`                       | JWT + place owner/admin | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
+| PATCH  | `/places/{id}/publish`               | JWT + place owner/admin | Publish a place. Only succeeds when `status === active`. |
+| PATCH  | `/places/{id}/unpublish`             | JWT + place owner/admin | Unpublish a place. Always succeeds; clears `published` and `GSI1PK` regardless of current status. |
+| PATCH  | `/places/{id}/review`                | JWT + admin  | Set a place's `status` to the value given in the body (`{ status: PlaceStatus }`). Rejects any value not in the `PlaceStatus` enum; doesn't touch `published`. |
+| PATCH  | `/places/{id}/images/{type}`         | JWT + place owner/admin | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
+| PATCH  | `/places/{id}/images/{type}/approve` | JWT + admin  | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to a new versioned live key, then clears the draft and deletes the image it replaced. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
+| PATCH  | `/places/{id}/grant`                 | JWT + place owner/admin | Give another user ownership of the place, its locations and offers. Body: `{ owner: <userId> }`. `404` if the user doesn't exist, `400` unless their `role` is `owner`, `409` if they already own the place. Returns `{ id, owner }`. |
 
 ### Place locations
 
-| Method | Path                                  | Auth              | Description |
-|--------|---------------------------------------|-------------------|-------------|
-| POST   | `/places/{id}/locations`              | JWT + owner/admin | Add a location to the place (body: `PlaceLocationModel`). Resets the place's `status` to `reviewing`. `404` if the place doesn't exist. |
-| GET    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Preview a single location (for populating the edit form), including its visible offers. `404` if missing or soft-deleted. |
-| PUT    | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Replace a location's fields — full replacement, so omitted optional fields are cleared. Resets the place's `status` to `reviewing`. `404` if missing or soft-deleted. |
-| DELETE | `/places/{id}/locations/{locationId}` | JWT + owner/admin | Soft-delete a location (`deleted: true`; never hard-deleted). Resets the place's `status` to `reviewing`. |
+| Method | Path                                  | Auth                    | Description |
+|--------|---------------------------------------|-------------------------|-------------|
+| POST   | `/places/{id}/locations`              | JWT + place owner/admin | Add a location to the place (body: `PlaceLocationModel`). Resets the place's `status` to `reviewing`. `404` if the place doesn't exist. |
+| GET    | `/places/{id}/locations/{locationId}` | JWT + place owner/admin | Preview a single location (for populating the edit form), including its visible offers. `404` if missing or soft-deleted. |
+| PUT    | `/places/{id}/locations/{locationId}` | JWT + place owner/admin | Replace a location's fields — full replacement, so omitted optional fields are cleared. Resets the place's `status` to `reviewing`. `404` if missing or soft-deleted. |
+| DELETE | `/places/{id}/locations/{locationId}` | JWT + place owner/admin | Soft-delete a location (`deleted: true`; never hard-deleted). Resets the place's `status` to `reviewing`. |
 
 ### Place offers
 
-| Method | Path                            | Auth              | Description |
-|--------|---------------------------------|-------------------|-------------|
-| POST   | `/places/{id}/offers`           | JWT + owner/admin | Create an offer (body: `{ title, discount?, start?, end?, status? }`, see below). A place offer, or a location offer with `?location=<locationId>` — the link is fixed at creation. `status` defaults to `active`. `404` if the place doesn't exist, `400` if the location doesn't (or is soft-deleted). |
-| GET    | `/places/{id}/offers`           | JWT + owner/admin | List every offer of the place, any status, newest first. Paginated: `?take` (default 20, max 100) and `?cursor` (`meta.nextCursor` of the previous page). |
-| GET    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Preview a single offer, any status. |
-| PUT    | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Replace an offer's `title`/`discount`/`start`/`end` — full replacement, so omitted optional fields are cleared. `status` is optional: omitted keeps the current one, `active` reactivates a canceled offer. |
-| DELETE | `/places/{id}/offers/{offerId}` | JWT + owner/admin | Cancel an offer (`status: canceled`; never deleted). |
+| Method | Path                            | Auth                    | Description |
+|--------|---------------------------------|-------------------------|-------------|
+| POST   | `/places/{id}/offers`           | JWT + place owner/admin | Create an offer (body: `{ title, discount?, start?, end?, status? }`, see below). A place offer, or a location offer with `?location=<locationId>` — the link is fixed at creation. `status` defaults to `active`. `404` if the place doesn't exist, `400` if the location doesn't (or is soft-deleted). |
+| GET    | `/places/{id}/offers`           | JWT + place owner/admin | List every offer of the place, any status, newest first. Paginated: `?take` (default 20, max 100) and `?cursor` (`meta.nextCursor` of the previous page). |
+| GET    | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Preview a single offer, any status. |
+| PUT    | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Replace an offer's `title`/`discount`/`start`/`end` — full replacement, so omitted optional fields are cleared. `status` is optional: omitted keeps the current one, `active` reactivates a canceled offer. |
+| DELETE | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Cancel an offer (`status: canceled`; never deleted). |
 
 > [!NOTE]
 > - `discount` is a positive number
@@ -325,5 +327,6 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 
 - CI/CD with CodePipeline (CDK Pipelines) — deploy on push
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
-- Role and ownership-based authorization on place/category endpoints, plus per-place ownership on location and offer endpoints (these are only role-gated to owner/admin today) — `PATCH /places/{id}/review` currently accepts any authenticated user, with no admin-only restriction
+- Owner user search (`name`/`email`) for picking who to grant place ownership to, and revoking a place owner
+- Role-based authorization on category endpoints (any authenticated user can mutate them today)
 - Request validation with API Gateway models or zod

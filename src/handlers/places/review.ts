@@ -1,10 +1,12 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { requireRole } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
 import { PlaceItem, PlaceStatus, toPlaceModel } from '../../models/place';
+import { UserRole } from '../../models/user';
 
 interface ReviewDto {
   status?: PlaceStatus;
@@ -13,10 +15,8 @@ interface ReviewDto {
 /**
  * Review Place
  *
- * PATCH /places/{id}/review (Cognito-protected)
- * change place status
- * 
- * @todo restrict by admin user
+ * PATCH /places/{id}/review (Cognito-protected, admin only)
+ * change place status — admin-only so an owner can't approve (and then publish) their own place
  */
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -40,6 +40,9 @@ export const handler = async (
   }
 
   try {
+    const access = await requireRole(event, [UserRole.ADMIN]);
+    if ('response' in access) return access.response;
+
     const result = await ddb.send(
       new UpdateCommand({
         TableName: TABLE_NAME,

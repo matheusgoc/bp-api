@@ -4,9 +4,9 @@ import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../../../src/lib/dynamo';
 import { forbidden } from '../../../src/lib/http';
 
-const requireRole = jest.fn();
+const requirePlaceAccess = jest.fn();
 jest.mock('../../../src/lib/access', () => ({
-  requireRole: (...args: unknown[]) => requireRole(...args),
+  requirePlaceAccess: (...args: unknown[]) => requirePlaceAccess(...args),
 }));
 
 import { handler } from '../../../src/handlers/locations/update';
@@ -21,8 +21,8 @@ const params = { id: 'p1', locationId: 'l1' };
 describe('PUT /places/{id}/locations/{locationId}', () => {
   beforeEach(() => {
     ddbMock.reset();
-    requireRole.mockReset();
-    requireRole.mockResolvedValue({ user: { id: 'u1', role: UserRole.ADMIN } });
+    requirePlaceAccess.mockReset();
+    requirePlaceAccess.mockResolvedValue({ user: { id: 'u1', role: UserRole.ADMIN } });
   });
 
   it('replaces the location fields and resets the place to reviewing', async () => {
@@ -61,8 +61,8 @@ describe('PUT /places/{id}/locations/{locationId}', () => {
     expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('passes through the role check response', async () => {
-    requireRole.mockResolvedValue({ response: forbidden() });
+  it('passes through the place access check response', async () => {
+    requirePlaceAccess.mockResolvedValue({ response: forbidden() });
 
     const result = await handler(event(params, validBody), context);
     expect(result.statusCode).toBe(403);

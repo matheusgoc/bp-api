@@ -13,9 +13,9 @@ export const parseTake = (value: string | undefined): { take: number } | { error
   return { take };
 };
 
-// generates a base64url pagination cursor wrapping DynamoDB's own LastEvaluatedKey, tied
-// to the query it was issued for (a listing filter, a place id) so it can't be replayed
-// against a different one
+// generates a base64url pagination cursor wrapping DynamoDB's own LastEvaluatedKey
+// tied to the query it was issued for - a listing filter, a place id 
+// so it can't be replayed against a different one
 export const encodeCursor = (filter: string, key: Record<string, unknown>): string =>
   Buffer.from(JSON.stringify({ filter, key })).toString('base64url');
 

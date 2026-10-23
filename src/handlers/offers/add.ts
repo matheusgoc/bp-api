@@ -3,7 +3,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-l
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { requireRole } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
-import { badRequest, json, notFound, serverError } from '../../lib/http';
+import { badRequest, forbidden, json, notFound, serverError } from '../../lib/http';
 import { loadPlacePartition } from '../../lib/placeReads';
 import { logger } from '../../lib/powertools';
 import {
@@ -15,13 +15,14 @@ import {
   placeOffersKey,
   toOfferModel,
 } from '../../models/offer';
+import { canManagePlace, PLACE_ACCESS_DENIED } from '../../models/place';
 import { UserRole } from '../../models/user';
 import { parseOfferDto } from './dto';
 
 /**
  * Add Offer
  *
- * POST /places/{id}/offers[?location=<locationId>] (Cognito-protected, owner/admin only)
+ * POST /places/{id}/offers[?location=<locationId>] (Cognito-protected, place owner/admin only)
  * Creates a place offer, or a location offer when ?location is given — the link is set
  * only here, update can't move an offer. Status defaults to active.
  */
@@ -56,6 +57,7 @@ export const handler = async (
 
     const { place, locations } = await loadPlacePartition(placeId);
     if (!place) return notFound('Place not found');
+    if (!canManagePlace(access.user, place)) return forbidden(PLACE_ACCESS_DENIED);
 
     const location = locationId
       ? locations.find((candidate) => candidate.id === locationId && !candidate.deleted)

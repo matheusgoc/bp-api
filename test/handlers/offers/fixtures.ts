@@ -54,6 +54,7 @@ export const makePlace = (overrides: Partial<PlaceItem> = {}): PlaceItem => ({
   status: PlaceStatus.ACTIVE,
   reason: '',
   published: true,
+  ownerBy: ['u1'],
   createdAt: '2024-01-01T00:00:00.000Z',
   createdBy: 'u1',
   updatedAt: '2024-01-01T00:00:00.000Z',

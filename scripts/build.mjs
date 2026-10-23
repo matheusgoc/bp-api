@@ -23,6 +23,7 @@ const entries = {
   "places-preview": "src/handlers/places/preview.ts",
   "places-upload-image": "src/handlers/places/uploadImage.ts",
   "places-approve-image": "src/handlers/places/approveImage.ts",
+  "places-grant": "src/handlers/places/grant.ts",
   "locations-add": "src/handlers/locations/add.ts",
   "locations-update": "src/handlers/locations/update.ts",
   "locations-remove": "src/handlers/locations/remove.ts",

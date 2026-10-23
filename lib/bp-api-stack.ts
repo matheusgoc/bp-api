@@ -62,8 +62,8 @@ export class BpApiStack extends cdk.Stack {
       ],
     });
 
-    imagesBucket.grantPublicAccess('places/*/photo.*', 's3:GetObject');
-    imagesBucket.grantPublicAccess('places/*/logo.*', 's3:GetObject');
+    // every place image, live and draft — drafts too, so the owner/admin management view can show them
+    imagesBucket.grantPublicAccess('places/*', 's3:GetObject');
 
     // ─────────────────────────────────────────────
     // Cognito — user pool for the mobile app
@@ -156,6 +156,7 @@ export class BpApiStack extends cdk.Stack {
     const unpublishPlaceFn = makeFunction('places-unpublish');
     const reviewPlaceFn = makeFunction('places-review');
     const previewPlaceFn = makeFunction('places-preview');
+    const grantPlaceFn = makeFunction('places-grant');
 
     const listPlacesFn = makeFunction('places-list');
     listPlacesFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
@@ -170,16 +171,20 @@ export class BpApiStack extends cdk.Stack {
       fn.addEnvironment('S3_PUBLIC_URL_BASE', `https://${imagesBucket.bucketRegionalDomainName}`);
     }
 
-    table.grantWriteData(addPlaceFn);
-    table.grantWriteData(updatePlaceFn);
-    table.grantWriteData(publishPlaceFn);
-    table.grantWriteData(unpublishPlaceFn);
-    table.grantWriteData(reviewPlaceFn);
+    // mutations read the caller's profile (role check) and the place (ownership check)
+    // before writing
+    table.grantReadWriteData(addPlaceFn);
+    table.grantReadWriteData(updatePlaceFn);
+    table.grantReadWriteData(publishPlaceFn);
+    table.grantReadWriteData(unpublishPlaceFn);
+    table.grantReadWriteData(reviewPlaceFn);
+    table.grantReadWriteData(grantPlaceFn);
     table.grantReadData(listPlacesFn);
     table.grantReadData(previewPlaceFn);
 
-    table.grantWriteData(uploadPlaceImageFn);
-    imagesBucket.grantPut(uploadPlaceImageFn); // s3:PutObject only — presigning needs no other S3 permission
+    table.grantReadWriteData(uploadPlaceImageFn);
+    imagesBucket.grantPut(uploadPlaceImageFn); // presigning needs no other S3 permission
+    imagesBucket.grantDelete(uploadPlaceImageFn); // removes the draft a new upload replaces
     table.grantReadWriteData(approvePlaceImageFn);
     imagesBucket.grantRead(approvePlaceImageFn);
     imagesBucket.grantPut(approvePlaceImageFn);
@@ -301,6 +306,9 @@ export class BpApiStack extends cdk.Stack {
     placeById
       .addResource('review')
       .addMethod('PATCH', new apigw.LambdaIntegration(reviewPlaceFn), requireAuth); // PATCH /places/{id}/review
+    placeById
+      .addResource('grant')
+      .addMethod('PATCH', new apigw.LambdaIntegration(grantPlaceFn), requireAuth); // PATCH /places/{id}/grant
     const placeImageType = placeById.addResource('images').addResource('{type}');
     placeImageType.addMethod('PATCH', new apigw.LambdaIntegration(uploadPlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}
     placeImageType

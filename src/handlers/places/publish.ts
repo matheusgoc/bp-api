@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { requirePlaceAccess } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
@@ -9,7 +10,7 @@ import { PlaceItem, PlaceStatus, toPlaceModel } from '../../models/place';
 /**
  * Publish Place
  * 
- * PATCH /places/{id}/publish (Cognito-protected)
+ * PATCH /places/{id}/publish (Cognito-protected, place owner/admin only)
  * only allowed when the place's current status is ACTIVE 
  * sets published=true and adds GSI1PK so the place appears in the public listing.
  */
@@ -25,6 +26,9 @@ export const handler = async (
   const key = { PK: `PLACE#${id}`, SK: 'METADATA' };
 
   try {
+    const access = await requirePlaceAccess(event, id);
+    if ('response' in access) return access.response;
+
     const result = await ddb.send(
       new UpdateCommand({
         TableName: TABLE_NAME,

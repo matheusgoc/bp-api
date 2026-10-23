@@ -31,6 +31,7 @@ const draftItem: PlaceItem = {
   status: PlaceStatus.DRAFT,
   reason: '',
   published: false,
+  ownerBy: ['u1'],
   createdAt: '2024-01-01T00:00:00.000Z',
   createdBy: 'user-1',
   updatedAt: '2024-01-01T00:00:00.000Z',
@@ -42,6 +43,24 @@ describe('GET /places/{id}', () => {
   beforeEach(() => {
     ddbMock.reset();
     ddbMock.on(QueryCommand, liveOffersQuery).resolves({ Items: [] });
+  });
+
+  it('returns pending draft images for the management view, and omits them when there are none', async () => {
+    const drafts = {
+      draftPhoto: 'http://localhost:9000/bp-api-local/places/1/photo-draft.jpg',
+      draftLogo: 'http://localhost:9000/bp-api-local/places/1/logo-draft.png',
+    };
+    ddbMock
+      .on(QueryCommand, partitionQuery)
+      .resolvesOnce({ Items: [{ ...draftItem, ...drafts }] })
+      .resolvesOnce({ Items: [draftItem] });
+
+    const pending = JSON.parse((await handler(event('1'), context)).body);
+    expect(pending).toMatchObject(drafts);
+
+    const none = JSON.parse((await handler(event('1'), context)).body);
+    expect(none.draftPhoto).toBeUndefined();
+    expect(none.draftLogo).toBeUndefined();
   });
 
   it('returns a place regardless of published/status, with empty locations and offers', async () => {

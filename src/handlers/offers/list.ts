@@ -2,17 +2,18 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-l
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { requireRole } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
-import { badRequest, json, notFound, serverError } from '../../lib/http';
+import { badRequest, forbidden, json, notFound, serverError } from '../../lib/http';
 import { decodeCursor, encodeCursor, parseTake } from '../../lib/pagination';
 import { loadPlacePartition } from '../../lib/placeReads';
 import { logger } from '../../lib/powertools';
 import { OfferItem, placeOffersKey, toOfferModel } from '../../models/offer';
+import { canManagePlace, PLACE_ACCESS_DENIED } from '../../models/place';
 import { UserRole } from '../../models/user';
 
 /**
  * List Offers
  *
- * GET /places/{id}/offers (Cognito-protected, owner/admin only)
+ * GET /places/{id}/offers (Cognito-protected, place owner/admin only)
  * every offer of the place no matter the status, newest first (GSI2)
  * ?take (default 20, capped at 100)
  * ?cursor — cursor-based pagination, tied to the place
@@ -56,6 +57,7 @@ export const handler = async (
       loadPlacePartition(placeId),
     ]);
     if (!place) return notFound('Place not found');
+    if (!canManagePlace(access.user, place)) return forbidden(PLACE_ACCESS_DENIED);
 
     const now = new Date();
     const locationsById = new Map(locations.map((location) => [location.id, location]));

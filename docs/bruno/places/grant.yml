@@ -1,0 +1,26 @@
+info:
+  name: grant
+  type: http
+  seq: 12
+
+http:
+  method: PATCH
+  url: "{{BASE}}/places/:id/grant"
+  params:
+    - name: id
+      value: 6ef53057-39b4-4f0c-bd3b-e4c9bad7343d
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "owner": "<userId of an owner user>"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

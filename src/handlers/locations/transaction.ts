@@ -1,4 +1,3 @@
-import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { TABLE_NAME } from '../../lib/dynamo';
 import { PlaceStatus } from '../../models/place';
 
@@ -15,9 +14,3 @@ export const placeReviewUpdate = (placeId: string, now: string) => ({
     ExpressionAttributeValues: { ':status': PlaceStatus.REVIEWING, ':updatedAt': now },
   },
 });
-
-// True when the transaction was cancelled because the item at `index` failed
-// its ConditionExpression.
-export const conditionFailedAt = (error: unknown, index: number): boolean =>
-  error instanceof TransactionCanceledException &&
-  error.CancellationReasons?.[index]?.Code === 'ConditionalCheckFailed';

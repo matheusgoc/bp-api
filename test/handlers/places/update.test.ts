@@ -3,6 +3,13 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../../../src/lib/dynamo';
+import { forbidden } from '../../../src/lib/http';
+import { UserRole } from '../../../src/models/user';
+
+const requirePlaceAccess = jest.fn();
+jest.mock('../../../src/lib/access', () => ({
+  requirePlaceAccess: (...args: unknown[]) => requirePlaceAccess(...args),
+}));
 import { handler } from '../../../src/handlers/places/update';
 import { PlaceItem, PlaceStatus } from '../../../src/models/place';
 
@@ -27,6 +34,7 @@ const baseItem: PlaceItem = {
   status: PlaceStatus.ACTIVE,
   reason: '',
   published: true,
+  ownerBy: ['u1'],
   createdAt: '2024-01-01T00:00:00.000Z',
   createdBy: 'user-1',
   updatedAt: '2024-01-01T00:00:00.000Z',
@@ -38,6 +46,8 @@ const event = (id: string, body: unknown) =>
 describe('PUT /places/{id}', () => {
   beforeEach(() => {
     ddbMock.reset();
+    requirePlaceAccess.mockReset();
+    requirePlaceAccess.mockResolvedValue({ user: { id: 'u1', role: UserRole.OWNER }, place: baseItem });
   });
 
   it('merges only editable fields and forces status back to reviewing, leaving published untouched', async () => {
@@ -112,6 +122,16 @@ describe('PUT /places/{id}', () => {
     const result = await handler(event('1', { category: 'missing' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
+
+  it('passes through the place access check response', async () => {
+    requirePlaceAccess.mockResolvedValue({ response: forbidden() });
+
+    const result = await handler(event('1', { name: 'New name' }), context);
+
+    expect(result.statusCode).toBe(403);
+    expect(requirePlaceAccess).toHaveBeenCalledWith(expect.anything(), '1');
     expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 });

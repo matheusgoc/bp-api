@@ -4,9 +4,9 @@ import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../../../src/lib/dynamo';
 import { forbidden } from '../../../src/lib/http';
 
-const requireRole = jest.fn();
+const requirePlaceAccess = jest.fn();
 jest.mock('../../../src/lib/access', () => ({
-  requireRole: (...args: unknown[]) => requireRole(...args),
+  requirePlaceAccess: (...args: unknown[]) => requirePlaceAccess(...args),
 }));
 
 import { handler } from '../../../src/handlers/locations/add';
@@ -20,8 +20,8 @@ const context = { functionName: 'locations-add', awsRequestId: 'test' } as Conte
 describe('POST /places/{id}/locations', () => {
   beforeEach(() => {
     ddbMock.reset();
-    requireRole.mockReset();
-    requireRole.mockResolvedValue({ user: { id: 'u1', role: UserRole.OWNER } });
+    requirePlaceAccess.mockReset();
+    requirePlaceAccess.mockResolvedValue({ user: { id: 'u1', role: UserRole.OWNER } });
   });
 
   it('creates a location and resets the place to reviewing in one transaction', async () => {
@@ -35,7 +35,7 @@ describe('POST /places/{id}/locations', () => {
     expect(body.id).toBeDefined();
     expect(body.deleted).toBeUndefined();
 
-    expect(requireRole).toHaveBeenCalledWith(expect.anything(), [UserRole.OWNER, UserRole.ADMIN]);
+    expect(requirePlaceAccess).toHaveBeenCalledWith(expect.anything(), 'p1');
 
     const [put, place] = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems!;
     expect(put.Put?.Item).toMatchObject({
@@ -82,8 +82,8 @@ describe('POST /places/{id}/locations', () => {
     expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('passes through the role check response', async () => {
-    requireRole.mockResolvedValue({ response: forbidden() });
+  it('passes through the place access check response', async () => {
+    requirePlaceAccess.mockResolvedValue({ response: forbidden() });
 
     const result = await handler(event({ id: 'p1' }, validBody), context);
 

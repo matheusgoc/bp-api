@@ -1,19 +1,18 @@
 import { randomUUID } from 'crypto';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { requireRole } from '../../lib/access';
-import { ddb, TABLE_NAME } from '../../lib/dynamo';
+import { requirePlaceAccess } from '../../lib/access';
+import { conditionFailedAt, ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
 import { LocationItem, locationKey, toLocationModel } from '../../models/location';
-import { UserRole } from '../../models/user';
 import { parseLocationDto } from './dto';
-import { conditionFailedAt, placeReviewUpdate } from './transaction';
+import { placeReviewUpdate } from './transaction';
 
 /**
  * Add Location
  *
- * POST /places/{id}/locations (Cognito-protected, owner/admin only)
+ * POST /places/{id}/locations (Cognito-protected, place owner/admin only)
  * Creates a location under the place and resets the place to reviewing
  */
 export const handler = async (
@@ -36,7 +35,7 @@ export const handler = async (
   if ('error' in parsed) return badRequest(parsed.error);
 
   try {
-    const access = await requireRole(event, [UserRole.OWNER, UserRole.ADMIN]);
+    const access = await requirePlaceAccess(event, placeId);
     if ('response' in access) return access.response;
 
     const id = randomUUID();

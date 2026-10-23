@@ -1,18 +1,17 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
-import { requireRole } from '../../lib/access';
+import { requirePlaceAccess } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { loadLiveOffers } from '../../lib/placeReads';
 import { logger } from '../../lib/powertools';
 import { LocationItem, locationKey, toLocationModel } from '../../models/location';
 import { toOfferModel } from '../../models/offer';
-import { UserRole } from '../../models/user';
 
 /**
  * Preview Location
  *
- * GET /places/{id}/locations/{locationId} (Cognito-protected, owner/admin only)
+ * GET /places/{id}/locations/{locationId} (Cognito-protected, place owner/admin only)
  * Used to populate the location edit form, including the location's visible offers
  * (active, started, not expired). Soft-deleted locations are 404.
  */
@@ -28,7 +27,7 @@ export const handler = async (
   if (!id) return badRequest('"locationId" path parameter is required');
 
   try {
-    const access = await requireRole(event, [UserRole.OWNER, UserRole.ADMIN]);
+    const access = await requirePlaceAccess(event, placeId);
     if ('response' in access) return access.response;
 
     const now = new Date();

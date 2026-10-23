@@ -3,6 +3,13 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from '../../../src/lib/dynamo';
+import { forbidden } from '../../../src/lib/http';
+import { UserRole } from '../../../src/models/user';
+
+const requireRole = jest.fn();
+jest.mock('../../../src/lib/access', () => ({
+  requireRole: (...args: unknown[]) => requireRole(...args),
+}));
 import { handler } from '../../../src/handlers/places/review';
 import { PlaceItem, PlaceStatus } from '../../../src/models/place';
 
@@ -27,6 +34,7 @@ const baseItem: PlaceItem = {
   status: PlaceStatus.REVIEWING,
   reason: '',
   published: false,
+  ownerBy: ['u1'],
   createdAt: '2024-01-01T00:00:00.000Z',
   createdBy: 'user-1',
   updatedAt: '2024-01-01T00:00:00.000Z',
@@ -38,6 +46,8 @@ const event = (id: string, body: unknown) =>
 describe('POST /places/{id}/review', () => {
   beforeEach(() => {
     ddbMock.reset();
+    requireRole.mockReset();
+    requireRole.mockResolvedValue({ user: { id: 'admin-1', role: UserRole.ADMIN } });
   });
 
   it('sets status to the given value', async () => {
@@ -73,5 +83,15 @@ describe('POST /places/{id}/review', () => {
 
     const result = await handler(event('missing', { status: PlaceStatus.ACTIVE }), context);
     expect(result.statusCode).toBe(404);
+  });
+
+  it('requires the admin role', async () => {
+    requireRole.mockResolvedValue({ response: forbidden() });
+
+    const result = await handler(event('1', { status: PlaceStatus.ACTIVE }), context);
+
+    expect(result.statusCode).toBe(403);
+    expect(requireRole).toHaveBeenCalledWith(expect.anything(), [UserRole.ADMIN]);
+    expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 });

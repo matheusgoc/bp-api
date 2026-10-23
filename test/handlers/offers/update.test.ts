@@ -124,4 +124,14 @@ describe('PUT /places/{id}/offers/{offerId}', () => {
     expect(result.statusCode).toBe(404);
     expect(JSON.parse(result.body).error).toBe('Offer not found');
   });
+
+  it('returns 403 when the caller does not own the place', async () => {
+    requireRole.mockResolvedValue({ user: { id: 'u2', role: UserRole.OWNER } });
+
+    const result = await handler(event(params, validBody), context);
+
+    expect(result.statusCode).toBe(403);
+    expect(JSON.parse(result.body).error).toBe('Not an owner of this place');
+    expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
 });

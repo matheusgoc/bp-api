@@ -1,26 +1,28 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { CopyObjectCommand } from '@aws-sdk/client-s3';
+import { requireRole } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { BUCKET_NAME, PUBLIC_URL_BASE, s3 } from '../../lib/s3';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
 import { PlaceItem, toPlaceModel } from '../../models/place';
+import { UserRole } from '../../models/user';
+import { deletePlaceImage, placeImageKey, placeImageKeyFromUrl } from './images';
 
 /**
  * Approve Place Image
  *
- * PATCH /places/{id}/images/{type}/approve (Cognito-protected)
+ * PATCH /places/{id}/images/{type}/approve (Cognito-protected, admin only)
  * 
  * {type} is 'photo' or 'logo'. 
  * 
  * Moves draft(Logo|Photo) to the live photo/logo field. 
  *
- * The S3 object is copied from its draft key to its live key server-side, 
- * so the live key's bytes never change until an explicit approval
- * 
- * @todo verification and moderation step
+ * The S3 object is copied from its draft key to a new live key server-side
+ * versioned, so every approved image gets a new public URL
+ * then the draft and the previously approved image are deleted
  */
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -40,15 +42,19 @@ export const handler = async (
   const key = { PK: `PLACE#${id}`, SK: 'METADATA' };
 
   try {
+    const access = await requireRole(event, [UserRole.ADMIN]);
+    if ('response' in access) return access.response;
+
     const existing = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: key }));
     if (!existing.Item) return notFound('Place not found');
 
-    const draftUrl = (existing.Item as PlaceItem)[draftField];
-    if (!draftUrl) return badRequest(`No pending draft "${type}" to approve`);
+    const place = existing.Item as PlaceItem;
+    const draftUrl = place[draftField];
+    const draftKey = draftUrl && placeImageKeyFromUrl(id, draftUrl);
+    if (!draftKey) return badRequest(`No pending draft "${type}" to approve`);
 
-    const ext = draftUrl.slice(draftUrl.lastIndexOf('.') + 1);
-    const draftKey = `places/${id}/${type}-draft.${ext}`;
-    const liveKey = `places/${id}/${type}.${ext}`;
+    const ext = draftKey.slice(draftKey.lastIndexOf('.') + 1);
+    const liveKey = placeImageKey(id, type, ext, false);
     const liveUrl = `${PUBLIC_URL_BASE}/${liveKey}`;
 
     try {
@@ -79,11 +85,10 @@ export const handler = async (
       }),
     );
 
-    try {
-      await s3.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: draftKey }));
-    } catch (error) {
-      logger.warn('Failed to delete draft image after approval', { error, id, type });
-    }
+    // the draft and the image it replaces are no longer referenced
+    await deletePlaceImage(draftKey);
+    const previousLiveKey = place[type] && placeImageKeyFromUrl(id, place[type]);
+    if (previousLiveKey) await deletePlaceImage(previousLiveKey);
 
     logger.info('Approved place image', { id, type });
     return json(200, toPlaceModel(result.Attributes as PlaceItem));

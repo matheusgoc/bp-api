@@ -10,7 +10,7 @@ http:
     - name: published
       value: all
       type: query
-      description: true | false | all
+      description: true | false | all — false/all list every place for an admin, only the caller's own places for an owner
   auth: inherit
 
 settings:

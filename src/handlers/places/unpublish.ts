@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { requirePlaceAccess } from '../../lib/access';
 import { ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
@@ -9,7 +10,7 @@ import { PlaceItem, toPlaceModel } from '../../models/place';
 /**
  * Unpublish Place
  * 
- * PATCH /places/{id}/unpublish (Cognito-protected)
+ * PATCH /places/{id}/unpublish (Cognito-protected, place owner/admin only)
  * sets published=false
  * removes GSI1PK so the place drops out of the public listing.
  */
@@ -23,6 +24,9 @@ export const handler = async (
   if (!id) return badRequest('"id" path parameter is required');
 
   try {
+    const access = await requirePlaceAccess(event, id);
+    if ('response' in access) return access.response;
+
     const result = await ddb.send(
       new UpdateCommand({
         TableName: TABLE_NAME,

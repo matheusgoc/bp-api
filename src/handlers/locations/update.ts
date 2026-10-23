@@ -1,18 +1,17 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { requireRole } from '../../lib/access';
-import { ddb, TABLE_NAME } from '../../lib/dynamo';
+import { requirePlaceAccess } from '../../lib/access';
+import { conditionFailedAt, ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, json, notFound, serverError } from '../../lib/http';
 import { logger } from '../../lib/powertools';
 import { locationKey, toLocationModel } from '../../models/location';
-import { UserRole } from '../../models/user';
 import { LocationFields, parseLocationDto } from './dto';
-import { conditionFailedAt, placeReviewUpdate } from './transaction';
+import { placeReviewUpdate } from './transaction';
 
 /**
  * Update Location
  *
- * PUT /places/{id}/locations/{locationId} (Cognito-protected, owner/admin only)
+ * PUT /places/{id}/locations/{locationId} (Cognito-protected, place owner/admin only)
  * Full replacement of the location's fields (omitted optional fields are
  * cleared); resets the place to reviewing. Soft-deleted locations are 404.
  */
@@ -39,7 +38,7 @@ export const handler = async (
   const { fields } = parsed;
 
   try {
-    const access = await requireRole(event, [UserRole.OWNER, UserRole.ADMIN]);
+    const access = await requirePlaceAccess(event, placeId);
     if ('response' in access) return access.response;
 
     const now = new Date().toISOString();
