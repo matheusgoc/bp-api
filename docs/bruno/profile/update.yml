@@ -1,0 +1,26 @@
+info:
+  name: update
+  type: http
+  seq: 3
+
+http:
+  method: PUT
+  url: "{{BASE}}/profile"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Ana Souza Lima",
+        "phone": "61998887744",
+        "isWhatsapp": false,
+        "dob": "1990-01-01",
+        "gender": "F"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

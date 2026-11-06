@@ -1,0 +1,23 @@
+info:
+  name: convert other
+  type: http
+  seq: 5
+
+http:
+  method: PATCH
+  url: "{{BASE}}/profile/convert"
+  body:
+    type: json
+    data: |-
+      {
+        "id": "<userId of another user>",
+        "type": "owner"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

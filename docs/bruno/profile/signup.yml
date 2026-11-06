@@ -1,0 +1,27 @@
+info:
+  name: signup
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{BASE}}/profile"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Ana Souza",
+        "email": "ana@example.com",
+        "phone": "61998887733",
+        "isWhatsapp": true,
+        "dob": "1990-01-01",
+        "gender": "F"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

@@ -1,6 +1,6 @@
 # Bairro Promo API
 
-Serverless backend to server the [Bairro Promo](https://github.com/matheusgoc/bairropromo) mobile app. It runs on top of AWS Serverless Lambda functions service and DynamoDB NoSQL database for data persistence. There is a docker container to run to emulate the local environment as well as the DynamoDB database. 
+Serverless backend to server the [Bairro Promo](https://github.com/matheusgoc/bairropromo) mobile app. It runs on top of AWS Serverless Lambda functions service and DynamoDB NoSQL database for data persistence.
 
 **Stack:** AWS Lambda (Node.js 22, TypeScript) · API Gateway (REST) · DynamoDB (single-table) · Cognito · CDK · SAM CLI (local dev) · Lambda Powertools · X-Ray · Bun (package manager / script runner)
 
@@ -22,7 +22,7 @@ bun install
 
 ### CLIs
 
-Some command lines interface are required to run and the deploy the application. 
+Some command lines interface are required to run and deploy the application. 
 
 #### CDK CLI
 
