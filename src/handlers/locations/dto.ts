@@ -1,3 +1,4 @@
+import { badRequestError, type BadRequestError } from '../../lib/errors';
 import type { LocationWorkingHours } from '../../models/location';
 
 export interface LocationFields {
@@ -14,7 +15,7 @@ export interface LocationFields {
   workingHours: LocationWorkingHours[];
 }
 
-export type ParseLocationResult = { fields: LocationFields } | { error: string };
+export type ParseLocationResult = { fields: LocationFields } | { error: BadRequestError };
 
 const REQUIRED = ['name', 'city', 'state', 'address', 'postalCode'] as const;
 const OPTIONAL_STRINGS = ['phone', 'email'] as const;
@@ -27,10 +28,12 @@ const parseCoordinate = (
   name: 'lat' | 'lon',
   value: unknown,
   limit: number,
-): { value: number | null } | { error: string } => {
+): { value: number | null } | { error: BadRequestError } => {
   if (value === undefined || value === null) return { value: null };
   if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > limit) {
-    return { error: `"${name}" must be a number between -${limit} and ${limit}` };
+    return {
+      error: badRequestError('FIELD_INVALID', name, `must be a number between -${limit} and ${limit}`),
+    };
   }
   return { value };
 };
@@ -39,22 +42,22 @@ const parseCoordinate = (
 // is a full replacement). Unknown fields are ignored.
 export const parseLocationDto = (body: unknown): ParseLocationResult => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { error: 'Request body must be a JSON object' };
+    return { error: badRequestError('INVALID_BODY', 'must be a JSON object') };
   }
   const dto = body as Record<string, unknown>;
 
   for (const field of REQUIRED) {
-    if (!isNonEmptyString(dto[field])) return { error: `"${field}" is required` };
+    if (!isNonEmptyString(dto[field])) return { error: badRequestError('FIELD_REQUIRED', field) };
   }
 
   for (const field of OPTIONAL_STRINGS) {
     if (dto[field] !== undefined && typeof dto[field] !== 'string') {
-      return { error: `"${field}" must be a string` };
+      return { error: badRequestError('FIELD_INVALID', field, 'must be a string') };
     }
   }
 
   if (dto.isWhatsapp !== undefined && typeof dto.isWhatsapp !== 'boolean') {
-    return { error: '"isWhatsapp" must be a boolean' };
+    return { error: badRequestError('FIELD_INVALID', 'isWhatsapp', 'must be a boolean') };
   }
 
   const lat = parseCoordinate('lat', dto.lat, 90);
@@ -62,17 +65,25 @@ export const parseLocationDto = (body: unknown): ParseLocationResult => {
   const lon = parseCoordinate('lon', dto.lon, 180);
   if ('error' in lon) return lon;
 
-  if (!Array.isArray(dto.workingHours)) return { error: '"workingHours" must be an array' };
+  if (!Array.isArray(dto.workingHours)) {
+    return { error: badRequestError('FIELD_INVALID', 'workingHours', 'must be an array') };
+  }
 
   const workingHours: LocationWorkingHours[] = [];
   for (const [index, entry] of dto.workingHours.entries()) {
     const hours = (entry ?? {}) as Record<string, unknown>;
     if (!isNonEmptyString(hours.weekDay)) {
-      return { error: `"workingHours[${index}].weekDay" is required` };
+      return { error: badRequestError('FIELD_REQUIRED', `workingHours[${index}].weekDay`) };
     }
     for (const key of ['start', 'end'] as const) {
       if (typeof hours[key] !== 'string' || !TIME.test(hours[key] as string)) {
-        return { error: `"workingHours[${index}].${key}" must be a time in HH:mm format` };
+        return {
+          error: badRequestError(
+            'FIELD_INVALID',
+            `workingHours[${index}].${key}`,
+            'must be a time in HH:mm format',
+          ),
+        };
       }
     }
     workingHours.push({

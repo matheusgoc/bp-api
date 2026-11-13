@@ -23,17 +23,17 @@ export const handler = async (
   try {
     ids = JSON.parse(event.body ?? '[]');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   if (!Array.isArray(ids) || ids.length === 0) {
-    return badRequest('Request body must be a non-empty array of category ids');
+    return badRequest('INVALID_BODY', 'must be a non-empty array of category ids');
   }
   if (ids.some((id) => typeof id !== 'string' || !id.trim())) {
-    return badRequest('Request body must contain only non-empty strings');
+    return badRequest('INVALID_BODY', 'must contain only non-empty strings');
   }
   if (new Set(ids).size !== ids.length) {
-    return badRequest('Request body must not contain duplicate ids');
+    return badRequest('INVALID_BODY', 'must not contain duplicate ids');
   }
 
   const updatedAt = new Date().toISOString();

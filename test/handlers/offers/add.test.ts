@@ -105,18 +105,20 @@ describe('POST /places/{id}/offers', () => {
   });
 
   it.each([
-    [{ ...validBody, title: ' ' }, '"title" is required'],
-    [{ ...validBody, discount: 0 }, '"discount" must be a positive number'],
-    [{ ...validBody, discount: '10' }, '"discount" must be a positive number'],
-    [{ ...validBody, start: '2026-10-01' }, '"start" must be an ISO 8601 date-time'],
-    [{ ...validBody, end: '2026-10-31T23:59:59' }, '"end" must be an ISO 8601 date-time'],
-    [{ ...validBody, start: validBody.end, end: validBody.start }, '"end" must be after "start"'],
-    [{ ...validBody, status: 'expired' }, '"status" must be one of "active", "canceled"'],
-  ])('returns 400 for invalid body %#', async (body, message) => {
+    [{ ...validBody, title: ' ' }, 'FIELD_REQUIRED', 'title', '"title" is required'],
+    [{ ...validBody, discount: 0 }, 'FIELD_INVALID', 'discount', '"discount" must be a positive number'],
+    [{ ...validBody, discount: '10' }, 'FIELD_INVALID', 'discount', '"discount" must be a positive number'],
+    [{ ...validBody, start: '2026-10-01' }, 'FIELD_INVALID', 'start', '"start" must be an ISO 8601 date-time'],
+    [{ ...validBody, end: '2026-10-31T23:59:59' }, 'FIELD_INVALID', 'end', '"end" must be an ISO 8601 date-time'],
+    [{ ...validBody, start: validBody.end, end: validBody.start }, 'FIELD_INVALID', 'end', '"end" must be after "start"'],
+    [{ ...validBody, status: 'expired' }, 'FIELD_INVALID', 'status', '"status" must be one of "active", "canceled"'],
+  ])('returns 400 for invalid body %#', async (body, code, field, message) => {
     const result = await handler(event({ id: 'p1' }, body), context);
 
     expect(result.statusCode).toBe(400);
-    expect(JSON.parse(result.body).error).toContain(message);
+    const error = JSON.parse(result.body);
+    expect(error).toMatchObject({ code, field });
+    expect(error.msg).toContain(message);
     expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
@@ -124,6 +126,7 @@ describe('POST /places/{id}/offers', () => {
     const result = await handler(event({ id: 'p1' }, validBody, { location: ' ' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'PARAMETER_INVALID', field: 'location' });
     expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
@@ -148,7 +151,11 @@ describe('POST /places/{id}/offers', () => {
     const result = await handler(event({ id: 'p1' }, validBody, { location }), context);
 
     expect(result.statusCode).toBe(400);
-    expect(JSON.parse(result.body).error).toBe('"location" does not exist');
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'LOCATION_NOT_FOUND',
+      field: 'location',
+      msg: '"location" does not exist',
+    });
     expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
   });
 

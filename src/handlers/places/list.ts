@@ -160,7 +160,7 @@ export const handler = async (
 
   const filter = (event.queryStringParameters?.published ?? 'true') as PublishedFilter;
   if (!VALID_FILTERS.includes(filter)) {
-    return badRequest('"published" must be one of "true", "false", "all"');
+    return badRequest('PARAMETER_INVALID', 'published', 'must be one of "true", "false", "all"');
   }
 
   const cursorParam = event.queryStringParameters?.cursor;
@@ -188,7 +188,7 @@ export const handler = async (
     let exclusiveStartKey: Record<string, unknown> | undefined;
     if (cursorParam) {
       exclusiveStartKey = decodeCursor(cursorParam, cursorTag);
-      if (!exclusiveStartKey) return badRequest('"cursor" is invalid');
+      if (!exclusiveStartKey) return badRequest('INVALID_CURSOR');
     }
 
     const page = owner

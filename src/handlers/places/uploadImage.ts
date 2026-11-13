@@ -43,25 +43,27 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   const type = event.pathParameters?.type;
   if (type !== 'photo' && type !== 'logo') {
-    return badRequest('"type" path parameter must be "photo" or "logo"');
+    return badRequest('PARAMETER_INVALID', 'type', 'path parameter must be "photo" or "logo"');
   }
 
   let dto: UploadImageDto;
   try {
     dto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const contentType = dto.contentType;
   const ext = contentType ? CONTENT_TYPE_EXTENSIONS[contentType] : undefined;
   if (!ext) {
     return badRequest(
-      `"contentType" must be one of: ${Object.keys(CONTENT_TYPE_EXTENSIONS).join(', ')}`,
+      'FIELD_INVALID',
+      'contentType',
+      `must be one of: ${Object.keys(CONTENT_TYPE_EXTENSIONS).join(', ')}`,
     );
   }
 

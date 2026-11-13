@@ -21,7 +21,7 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   try {
     const access = await requirePlaceAccess(event, id);

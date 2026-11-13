@@ -31,11 +31,11 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   const type = event.pathParameters?.type;
   if (type !== 'photo' && type !== 'logo') {
-    return badRequest('"type" path parameter must be "photo" or "logo"');
+    return badRequest('PARAMETER_INVALID', 'type', 'path parameter must be "photo" or "logo"');
   }
 
   const draftField = type === 'photo' ? 'draftPhoto' : 'draftLogo';
@@ -51,7 +51,7 @@ export const handler = async (
     const place = existing.Item as PlaceItem;
     const draftUrl = place[draftField];
     const draftKey = draftUrl && placeImageKeyFromUrl(id, draftUrl);
-    if (!draftKey) return badRequest(`No pending draft "${type}" to approve`);
+    if (!draftKey) return badRequest('NO_PENDING_DRAFT_IMAGE', type);
 
     const ext = draftKey.slice(draftKey.lastIndexOf('.') + 1);
     const liveKey = placeImageKey(id, type, ext, false);
@@ -67,7 +67,7 @@ export const handler = async (
       );
     } catch (error) {
       logger.error('Failed to copy draft image to its live key', error as Error);
-      return badRequest('Draft image was not found in storage — re-upload before approving');
+      return badRequest('DRAFT_IMAGE_NOT_UPLOADED');
     }
 
     const result = await ddb.send(

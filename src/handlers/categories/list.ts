@@ -24,7 +24,7 @@ export const handler = async (
 
   const filter = (event.queryStringParameters?.enabled ?? 'true') as EnabledFilter;
   if (!VALID_FILTERS.includes(filter)) {
-    return badRequest('"enabled" must be one of "true", "false", "all"');
+    return badRequest('PARAMETER_INVALID', 'enabled', 'must be one of "true", "false", "all"');
   }
 
   try {

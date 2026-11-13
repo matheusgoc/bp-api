@@ -33,11 +33,11 @@ export const handler = async (
   logger.addContext(context);
 
   const placeId = event.pathParameters?.id;
-  if (!placeId) return badRequest('"id" path parameter is required');
+  if (!placeId) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   const locationParam = event.queryStringParameters?.location;
   if (locationParam !== undefined && !locationParam.trim()) {
-    return badRequest('"location" cannot be empty');
+    return badRequest('PARAMETER_INVALID', 'location', 'cannot be empty');
   }
   const locationId = locationParam?.trim() ?? '';
 
@@ -45,7 +45,7 @@ export const handler = async (
   try {
     body = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const parsed = parseOfferDto(body);
@@ -62,7 +62,7 @@ export const handler = async (
     const location = locationId
       ? locations.find((candidate) => candidate.id === locationId && !candidate.deleted)
       : undefined;
-    if (locationId && !location) return badRequest('"location" does not exist');
+    if (locationId && !location) return badRequest('LOCATION_NOT_FOUND');
 
     const id = randomUUID();
     const now = new Date();

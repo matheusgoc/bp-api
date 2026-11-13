@@ -25,7 +25,7 @@ export const handler = async (
   logger.addContext(context);
 
   const placeId = event.pathParameters?.id;
-  if (!placeId) return badRequest('"id" path parameter is required');
+  if (!placeId) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   const parsedTake = parseTake(event.queryStringParameters?.take);
   if ('error' in parsedTake) return badRequest(parsedTake.error);
@@ -35,7 +35,7 @@ export const handler = async (
   let exclusiveStartKey: Record<string, unknown> | undefined;
   if (cursorParam) {
     exclusiveStartKey = decodeCursor(cursorParam, placeId);
-    if (!exclusiveStartKey) return badRequest('"cursor" is invalid');
+    if (!exclusiveStartKey) return badRequest('INVALID_CURSOR');
   }
 
   try {

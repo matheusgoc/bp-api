@@ -28,11 +28,11 @@ export const handler = async (
   try {
     categoryDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
-  if (!categoryDto.name?.trim()) return badRequest('"name" is required');
-  if (!categoryDto.description?.trim()) return badRequest('"description" is required');
+  if (!categoryDto.name?.trim()) return badRequest('FIELD_REQUIRED', 'name');
+  if (!categoryDto.description?.trim()) return badRequest('FIELD_REQUIRED', 'description');
 
   const createdBy =
     event.requestContext.authorizer?.claims?.sub ?? 'local-dev';

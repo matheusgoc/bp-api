@@ -23,8 +23,8 @@ export const handler = async (
 
   const placeId = event.pathParameters?.id;
   const id = event.pathParameters?.locationId;
-  if (!placeId) return badRequest('"id" path parameter is required');
-  if (!id) return badRequest('"locationId" path parameter is required');
+  if (!placeId) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'locationId');
 
   try {
     const access = await requirePlaceAccess(event, placeId);

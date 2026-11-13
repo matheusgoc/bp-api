@@ -26,13 +26,13 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   let categoryDto: CategoryDto;
   try {
     categoryDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const names: Record<string, string> = {};
@@ -42,7 +42,7 @@ export const handler = async (
   for (const field of EDITABLE_FIELDS) {
     const value = categoryDto[field];
     if (value === undefined) continue;
-    if (!value.trim()) return badRequest(`"${field}" cannot be empty`);
+    if (!value.trim()) return badRequest('FIELD_EMPTY', field);
 
     names[`#${field}`] = field;
     values[`:${field}`] = value.trim();

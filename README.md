@@ -305,6 +305,37 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 > - The publice endpoint `GET /places/{id}` lists *published* place offers in its top-level `offers` attribute and location offers under `locations.offers` attribute 
 > - `GET /places/{id}/locations/{locationId}` list all offers
 
+### Errors
+
+Every `400 Bad Request` has a stable `code` the app can branch on, a human-readable `msg`, and, when the error is about one specific input, the `field` at fault (a body field, or a path/query parameter):
+
+```json
+{ "code": "PLACE_NOT_APPROVED", "msg": "Place must be approved (status \"active\") before it can be published" }
+{ "code": "FIELD_REQUIRED", "field": "name", "msg": "\"name\" is required" }
+```
+
+Match on `code` (and `field`), never on `msg`. The message wording may change. The codes are defined in one dictionary, [src/lib/errors.ts](src/lib/errors.ts):
+
+| Code | `field` | When |
+|------|---------|------|
+| `INVALID_JSON` | | The body isn't valid JSON. |
+| `INVALID_BODY` | | The body has the wrong shape, e.g. not a JSON object, or `PATCH /categories/reorder` without a non-empty array of unique ids. |
+| `PATH_PARAMETER_REQUIRED` | the parameter | A path parameter is missing. |
+| `PARAMETER_INVALID` | the parameter | Invalid path or query parameter: image `{type}`, `?take`, `?published`, `?enabled`, an empty `?location`. |
+| `INVALID_CURSOR` | `cursor` | `?cursor` is malformed or was issued for another listing. Restart from the first page. |
+| `FIELD_REQUIRED` | the field | A required body field is missing or blank. |
+| `FIELD_EMPTY` | the field | An optional field was sent blank on a partial update (`PUT /places/{id}`, `/categories/{id}`, `/profile`). |
+| `FIELD_INVALID` | the field | A body field has the wrong type or value, e.g. `gender`, `lat`, `workingHours[0].start`, `discount`, `end` before `start`. |
+| `PLACE_NOT_APPROVED` | | `PATCH /places/{id}/publish` on a place whose status isn't `active`. |
+| `CATEGORY_NOT_FOUND` | `category` | The place's `category` doesn't exist. |
+| `LOCATION_NOT_FOUND` | `location` | `POST /places/{id}/offers?location=` names a missing or soft-deleted location. |
+| `NO_PENDING_DRAFT_IMAGE` | `type` | Approving an image when there's no pending `draftPhoto`/`draftLogo`. |
+| `DRAFT_IMAGE_NOT_UPLOADED` | | Approving an image whose draft file never reached storage. Re-upload it. |
+| `OWNER_ROLE_REQUIRED` | `owner` | `PATCH /places/{id}/grant` names a user whose role isn't `owner`. |
+| `CANNOT_CONVERT_SELF` | `id` | An admin's `PATCH /profile/convert` targets their own id. |
+
+The other error statuses (`401`/`403`/`404`/`409`/`500`) still return `{ "error": "<message>" }`.
+
 ## Project structure
 
 ```

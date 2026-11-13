@@ -1,3 +1,5 @@
+import { badRequestError, type BadRequestError } from './errors';
+
 // Cursor pagination shared by the listing endpoints — DynamoDB's native
 // Limit/LastEvaluatedKey, so each request reads only `take` items.
 
@@ -5,11 +7,17 @@ const DEFAULT_TAKE = 20;
 const MAX_TAKE = 100;
 
 // ?take — page size, default 20, capped at 100
-export const parseTake = (value: string | undefined): { take: number } | { error: string } => {
+export const parseTake = (
+  value: string | undefined,
+): { take: number } | { error: BadRequestError } => {
   if (value === undefined) return { take: DEFAULT_TAKE };
   const take = Number(value);
-  if (!Number.isInteger(take) || take < 1) return { error: '"take" must be a positive integer' };
-  if (take > MAX_TAKE) return { error: `"take" must not exceed ${MAX_TAKE}` };
+  if (!Number.isInteger(take) || take < 1) {
+    return { error: badRequestError('PARAMETER_INVALID', 'take', 'must be a positive integer') };
+  }
+  if (take > MAX_TAKE) {
+    return { error: badRequestError('PARAMETER_INVALID', 'take', `must not exceed ${MAX_TAKE}`) };
+  }
   return { take };
 };
 

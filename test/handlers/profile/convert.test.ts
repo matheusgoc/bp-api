@@ -113,6 +113,7 @@ describe('PATCH /profile/convert', () => {
     const result = await handler(event({ id: '1' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'CANNOT_CONVERT_SELF', field: 'id' });
     expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 
@@ -136,6 +137,7 @@ describe('PATCH /profile/convert', () => {
     const result = await handler(event({ id: '2', type: 'bogus' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'FIELD_INVALID', field: 'type' });
   });
 
   it('returns 404 when the caller has no profile yet', async () => {

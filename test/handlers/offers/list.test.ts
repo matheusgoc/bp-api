@@ -113,6 +113,7 @@ describe('GET /places/{id}/offers', () => {
     const result = await handler(event(params, undefined, { take }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'PARAMETER_INVALID', field: 'take' });
     expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
@@ -128,7 +129,11 @@ describe('GET /places/{id}/offers', () => {
     const result = await handler(event(params, undefined, { cursor }), context);
 
     expect(result.statusCode).toBe(400);
-    expect(JSON.parse(result.body).error).toBe('"cursor" is invalid');
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'INVALID_CURSOR',
+      field: 'cursor',
+      msg: '"cursor" is invalid',
+    });
   });
 
   it('returns 404 when the place does not exist', async () => {

@@ -38,14 +38,14 @@ export const handler = async (
   try {
     profileDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   if (profileDto.gender !== undefined && !VALID_GENDERS.includes(profileDto.gender)) {
-    return badRequest(`"gender" must be one of: ${VALID_GENDERS.join(', ')}`);
+    return badRequest('FIELD_INVALID', 'gender', `must be one of: ${VALID_GENDERS.join(', ')}`);
   }
   if (profileDto.isWhatsapp !== undefined && typeof profileDto.isWhatsapp !== 'boolean') {
-    return badRequest('"isWhatsapp" must be a boolean');
+    return badRequest('FIELD_INVALID', 'isWhatsapp', 'must be a boolean');
   }
 
   const names: Record<string, string> = {};
@@ -55,7 +55,7 @@ export const handler = async (
   for (const field of TRIMMED_FIELDS) {
     const value = profileDto[field];
     if (value === undefined) continue;
-    if (!value.trim()) return badRequest(`"${field}" cannot be empty`);
+    if (!value.trim()) return badRequest('FIELD_EMPTY', field);
 
     names[`#${field}`] = field;
     values[`:${field}`] = value.trim();

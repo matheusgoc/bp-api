@@ -38,11 +38,11 @@ export const handler = async (
   try {
     placeDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
-  if (!placeDto.name?.trim()) return badRequest('"name" is required');
-  if (!placeDto.category?.trim()) return badRequest('"category" is required');
+  if (!placeDto.name?.trim()) return badRequest('FIELD_REQUIRED', 'name');
+  if (!placeDto.category?.trim()) return badRequest('FIELD_REQUIRED', 'category');
 
   const category = placeDto.category.trim();
 
@@ -61,7 +61,7 @@ export const handler = async (
       }),
     );
     if (!categoryResult.Item) {
-      return badRequest('"category" does not exists');
+      return badRequest('CATEGORY_NOT_FOUND');
     }
 
     const item: PlaceItem = {

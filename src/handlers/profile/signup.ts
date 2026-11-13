@@ -48,16 +48,16 @@ export const handler = async (
   try {
     profileDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
-  if (!profileDto.name?.trim()) return badRequest('"name" is required');
-  if (!profileDto.email?.trim()) return badRequest('"email" is required');
+  if (!profileDto.name?.trim()) return badRequest('FIELD_REQUIRED', 'name');
+  if (!profileDto.email?.trim()) return badRequest('FIELD_REQUIRED', 'email');
   if (profileDto.gender !== undefined && !VALID_GENDERS.includes(profileDto.gender)) {
-    return badRequest(`"gender" must be one of: ${VALID_GENDERS.join(', ')}`);
+    return badRequest('FIELD_INVALID', 'gender', `must be one of: ${VALID_GENDERS.join(', ')}`);
   }
   if (profileDto.isWhatsapp !== undefined && typeof profileDto.isWhatsapp !== 'boolean') {
-    return badRequest('"isWhatsapp" must be a boolean');
+    return badRequest('FIELD_INVALID', 'isWhatsapp', 'must be a boolean');
   }
 
   const id = randomUUID();

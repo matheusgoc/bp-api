@@ -36,7 +36,7 @@ export const handler = async (
   try {
     convertDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   try {
@@ -60,7 +60,7 @@ export const handler = async (
 
     if (targetId) {
       if (targetId === own.id) {
-        return badRequest('"id" must be another user, not the current one');
+        return badRequest('CANNOT_CONVERT_SELF');
       }
 
       const targetResult = await ddb.send(
@@ -70,7 +70,7 @@ export const handler = async (
 
       if (convertDto.type !== undefined) {
         if (!VALID_ROLES.includes(convertDto.type)) {
-          return badRequest(`"type" must be one of: ${VALID_ROLES.join(', ')}`);
+          return badRequest('FIELD_INVALID', 'type', `must be one of: ${VALID_ROLES.join(', ')}`);
         }
         targetRole = convertDto.type;
       }

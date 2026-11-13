@@ -34,14 +34,14 @@ export const handler = async (
 
   const placeId = event.pathParameters?.id;
   const id = event.pathParameters?.offerId;
-  if (!placeId) return badRequest('"id" path parameter is required');
-  if (!id) return badRequest('"offerId" path parameter is required');
+  if (!placeId) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'offerId');
 
   let body: unknown;
   try {
     body = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const parsed = parseOfferDto(body);

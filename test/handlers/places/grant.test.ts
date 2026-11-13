@@ -62,7 +62,11 @@ describe('PATCH /places/{id}/grant', () => {
     const result = await handler(event('p1', body), context);
 
     expect(result.statusCode).toBe(400);
-    expect(JSON.parse(result.body).error).toBe('"owner" is required');
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'FIELD_REQUIRED',
+      field: 'owner',
+      msg: '"owner" is required',
+    });
     expect(requirePlaceAccess).not.toHaveBeenCalled();
   });
 
@@ -114,6 +118,7 @@ describe('PATCH /places/{id}/grant', () => {
     const result = await handler(event('p1', { owner: 'u2' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'OWNER_ROLE_REQUIRED', field: 'owner' });
     expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 });

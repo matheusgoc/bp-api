@@ -96,6 +96,7 @@ describe('PUT /places/{id}', () => {
   it('rejects an empty string for an editable field', async () => {
     const result = await handler(event('1', { name: '  ' }), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({ code: 'FIELD_EMPTY', field: 'name', msg: '"name" cannot be empty' });
   });
 
   it('writes category into the "category" attribute when it references an existing category', async () => {
@@ -122,6 +123,7 @@ describe('PUT /places/{id}', () => {
     const result = await handler(event('1', { category: 'missing' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'CATEGORY_NOT_FOUND', field: 'category' });
     expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 

@@ -25,17 +25,17 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   let grantDto: GrantDto;
   try {
     grantDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const owner = typeof grantDto.owner === 'string' ? grantDto.owner.trim() : '';
-  if (!owner) return badRequest('"owner" is required');
+  if (!owner) return badRequest('FIELD_REQUIRED', 'owner');
 
   try {
     const access = await requirePlaceAccess(event, id);
@@ -50,7 +50,7 @@ export const handler = async (
     const targetUser = target.Item as UserItem | undefined;
     if (!targetUser) return notFound('User not found');
     if (targetUser.role !== UserRole.OWNER) {
-      return badRequest('"owner" must be a user with the owner role');
+      return badRequest('OWNER_ROLE_REQUIRED');
     }
 
     const now = new Date().toISOString();

@@ -66,19 +66,19 @@ describe('POST /places/{id}/locations', () => {
   });
 
   it.each([
-    [{ ...validBody, name: ' ' }, '"name" is required'],
-    [{ ...validBody, postalCode: undefined }, '"postalCode" is required'],
-    [{ ...validBody, workingHours: undefined }, '"workingHours" must be an array'],
-    [{ ...validBody, workingHours: [{ weekDay: 'monday', start: '8:00', end: '18:00' }] }, '"workingHours[0].start" must be a time in HH:mm format'],
-    [{ ...validBody, workingHours: [{ start: '08:00', end: '18:00' }] }, '"workingHours[0].weekDay" is required'],
-    [{ ...validBody, lat: '-19.9' }, '"lat" must be a number between -90 and 90'],
-    [{ ...validBody, lon: 200 }, '"lon" must be a number between -180 and 180'],
-    [{ ...validBody, isWhatsapp: 'yes' }, '"isWhatsapp" must be a boolean'],
-  ])('returns 400 for invalid body %#', async (body, message) => {
+    [{ ...validBody, name: ' ' }, 'FIELD_REQUIRED', 'name', '"name" is required'],
+    [{ ...validBody, postalCode: undefined }, 'FIELD_REQUIRED', 'postalCode', '"postalCode" is required'],
+    [{ ...validBody, workingHours: undefined }, 'FIELD_INVALID', 'workingHours', '"workingHours" must be an array'],
+    [{ ...validBody, workingHours: [{ weekDay: 'monday', start: '8:00', end: '18:00' }] }, 'FIELD_INVALID', 'workingHours[0].start', '"workingHours[0].start" must be a time in HH:mm format'],
+    [{ ...validBody, workingHours: [{ start: '08:00', end: '18:00' }] }, 'FIELD_REQUIRED', 'workingHours[0].weekDay', '"workingHours[0].weekDay" is required'],
+    [{ ...validBody, lat: '-19.9' }, 'FIELD_INVALID', 'lat', '"lat" must be a number between -90 and 90'],
+    [{ ...validBody, lon: 200 }, 'FIELD_INVALID', 'lon', '"lon" must be a number between -180 and 180'],
+    [{ ...validBody, isWhatsapp: 'yes' }, 'FIELD_INVALID', 'isWhatsapp', '"isWhatsapp" must be a boolean'],
+  ])('returns 400 for invalid body %#', async (body, code, field, msg) => {
     const result = await handler(event({ id: 'p1' }, body), context);
 
     expect(result.statusCode).toBe(400);
-    expect(JSON.parse(result.body).error).toBe(message);
+    expect(JSON.parse(result.body)).toEqual({ code, field, msg });
     expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 

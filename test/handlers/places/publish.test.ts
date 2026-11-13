@@ -67,6 +67,10 @@ describe('POST /places/{id}/publish', () => {
 
     const result = await handler(event('1'), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'PLACE_NOT_APPROVED',
+      msg: 'Place must be approved (status "active") before it can be published',
+    });
   });
 
   it('returns 404 when the place does not exist', async () => {

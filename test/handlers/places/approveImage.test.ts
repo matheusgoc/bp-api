@@ -135,6 +135,7 @@ describe('PATCH /places/{id}/images/{type}/approve', () => {
   it('returns 400 for an invalid type', async () => {
     const result = await handler(event('1', 'banner'), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'PARAMETER_INVALID', field: 'type' });
   });
 
   it('returns 404 when the place does not exist', async () => {
@@ -149,6 +150,11 @@ describe('PATCH /places/{id}/images/{type}/approve', () => {
 
     const result = await handler(event('1', 'photo'), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'NO_PENDING_DRAFT_IMAGE',
+      field: 'type',
+      msg: 'No pending draft "photo" to approve',
+    });
     expect(s3Mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
   });
 
@@ -158,6 +164,7 @@ describe('PATCH /places/{id}/images/{type}/approve', () => {
 
     const result = await handler(event('1', 'photo'), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).code).toBe('NO_PENDING_DRAFT_IMAGE');
   });
 
   it('returns 400 without approving when the draft object copy fails', async () => {
@@ -167,6 +174,7 @@ describe('PATCH /places/{id}/images/{type}/approve', () => {
     const result = await handler(event('1', 'photo'), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).code).toBe('DRAFT_IMAGE_NOT_UPLOADED');
     expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 

@@ -87,6 +87,7 @@ describe('POST /places', () => {
   it('rejects a missing name', async () => {
     const result = await handler(event({ category: 'cat-1' }), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'FIELD_REQUIRED', field: 'name' });
   });
 
   it('rejects a missing category', async () => {
@@ -100,6 +101,7 @@ describe('POST /places', () => {
     const result = await handler(event({ name: 'X', category: 'missing' }), context);
 
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toMatchObject({ code: 'CATEGORY_NOT_FOUND', field: 'category' });
     expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 });

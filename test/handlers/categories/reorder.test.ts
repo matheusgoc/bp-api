@@ -58,11 +58,16 @@ describe('POST /categories/reorder', () => {
   it('rejects an empty array', async () => {
     const result = await handler(event([]), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body)).toEqual({
+      code: 'INVALID_BODY',
+      msg: 'Request body must be a non-empty array of category ids',
+    });
   });
 
   it('rejects duplicate ids', async () => {
     const result = await handler(event(['a', 'a']), context);
     expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).code).toBe('INVALID_BODY');
   });
 
   it('rejects a non-array body', async () => {

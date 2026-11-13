@@ -21,7 +21,7 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   const key = { PK: `PLACE#${id}`, SK: 'METADATA' };
 
@@ -52,7 +52,7 @@ export const handler = async (
     if (error instanceof ConditionalCheckFailedException) {
       const existing = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: key }));
       if (!existing.Item) return notFound('Place not found');
-      return badRequest('Place must be approved (status "active") before it can be published');
+      return badRequest('PLACE_NOT_APPROVED');
     }
     logger.error('Failed to publish place', error as Error);
     return serverError();

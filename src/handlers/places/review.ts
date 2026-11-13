@@ -25,18 +25,18 @@ export const handler = async (
   logger.addContext(context);
 
   const id = event.pathParameters?.id;
-  if (!id) return badRequest('"id" path parameter is required');
+  if (!id) return badRequest('PATH_PARAMETER_REQUIRED', 'id');
 
   let reviewDto: ReviewDto;
   try {
     reviewDto = JSON.parse(event.body ?? '{}');
   } catch {
-    return badRequest('Request body must be valid JSON');
+    return badRequest('INVALID_JSON');
   }
 
   const availableStatuses = Object.values(PlaceStatus);
   if (!reviewDto.status || !availableStatuses.includes(reviewDto.status)) {
-    return badRequest(`"status" must be one of: ${availableStatuses.join(', ')}`);
+    return badRequest('FIELD_INVALID', 'status', `must be one of: ${availableStatuses.join(', ')}`);
   }
 
   try {
