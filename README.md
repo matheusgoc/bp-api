@@ -293,6 +293,7 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 | GET    | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Preview a single offer, any status. |
 | PUT    | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Replace an offer's `title`/`discount`/`start`/`end` — full replacement, so omitted optional fields are cleared. `status` is optional: omitted keeps the current one, `active` reactivates a canceled offer. |
 | DELETE | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Cancel an offer (`status: canceled`; never deleted). |
+| PATCH  | `/places/{id}/offers/{offerId}` | JWT + place owner/admin | Enable an offer (`status: active`) — reactivates a canceled offer without touching its other fields. No body. Idempotent. |
 
 > [!NOTE]
 > - `discount` is a positive number

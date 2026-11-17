@@ -31,6 +31,7 @@ const entries = {
   "offers-add": "src/handlers/offers/add.ts",
   "offers-update": "src/handlers/offers/update.ts",
   "offers-cancel": "src/handlers/offers/cancel.ts",
+  "offers-enable": "src/handlers/offers/enable.ts",
   "offers-preview": "src/handlers/offers/preview.ts",
   "offers-list": "src/handlers/offers/list.ts",
   "profile-signup": "src/handlers/profile/signup.ts",

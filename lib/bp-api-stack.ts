@@ -209,14 +209,16 @@ export class BpApiStack extends cdk.Stack {
     const addOfferFn = makeFunction('offers-add');
     const updateOfferFn = makeFunction('offers-update');
     const cancelOfferFn = makeFunction('offers-cancel');
+    const enableOfferFn = makeFunction('offers-enable');
     const previewOfferFn = makeFunction('offers-preview');
     const listOffersFn = makeFunction('offers-list');
 
-    // add/update/cancel read the caller's profile (role check) and the place partition
-    // (place/location summaries) besides writing the offer
+    // add/update/cancel/enable read the caller's profile (role check) and the place
+    // partition (place/location summaries) besides writing the offer
     table.grantReadWriteData(addOfferFn);
     table.grantReadWriteData(updateOfferFn);
     table.grantReadWriteData(cancelOfferFn);
+    table.grantReadWriteData(enableOfferFn);
     table.grantReadData(previewOfferFn);
     table.grantReadData(listOffersFn);
 
@@ -335,6 +337,7 @@ export class BpApiStack extends cdk.Stack {
     placeOfferById.addMethod('GET', new apigw.LambdaIntegration(previewOfferFn), requireAuth); // GET /places/{id}/offers/{offerId}
     placeOfferById.addMethod('PUT', new apigw.LambdaIntegration(updateOfferFn), requireAuth); // PUT /places/{id}/offers/{offerId}
     placeOfferById.addMethod('DELETE', new apigw.LambdaIntegration(cancelOfferFn), requireAuth); // DELETE /places/{id}/offers/{offerId}
+    placeOfferById.addMethod('PATCH', new apigw.LambdaIntegration(enableOfferFn), requireAuth); // PATCH /places/{id}/offers/{offerId}
 
     // profile
 

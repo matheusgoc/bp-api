@@ -42,7 +42,7 @@ describe('BpApiStack', () => {
         TracingConfig: { Mode: 'Active' },
       },
     });
-    expect(Object.keys(functions)).toHaveLength(31);
+    expect(Object.keys(functions)).toHaveLength(32);
   });
 
   it('creates a REST API with a Cognito authorizer', () => {
@@ -61,8 +61,8 @@ describe('BpApiStack', () => {
     // PUT /categories/{id}, POST .../enable, POST .../disable, POST .../reorder,
     // POST /profile, GET /profile, PUT /profile, PATCH /profile/convert,
     // POST /places/{id}/locations, GET/PUT/DELETE /places/{id}/locations/{locationId},
-    // GET/POST /places/{id}/offers, GET/PUT/DELETE /places/{id}/offers/{offerId}
-    expect(Object.keys(protectedMethods)).toHaveLength(26);
+    // GET/POST /places/{id}/offers, GET/PUT/DELETE/PATCH /places/{id}/offers/{offerId}
+    expect(Object.keys(protectedMethods)).toHaveLength(27);
 
     const publicMethods = template.findResources('AWS::ApiGateway::Method', {
       Properties: { AuthorizationType: 'NONE' },
