@@ -23,6 +23,9 @@ export interface PlaceModel {
   website?: string;
   locations?: PlaceLocationModel[];
   offers?: OfferModel[];
+  // titles of a few visible offers (place-level and location ones together) — the
+  // listing's teaser, only populated by GET /places
+  activeOffers?: string[];
   status: PlaceStatus;
   reason: string;
   published: boolean;
@@ -97,10 +100,10 @@ export const canManagePlace = (
   user.role === UserRole.ADMIN ||
   (user.role === UserRole.OWNER && (place.ownerBy ?? []).includes(user.id));
 
+// details are only attached by the read endpoints that load them (preview, list)
 export const toPlaceModel = (
   item: PlaceItem,
-  locations?: PlaceLocationModel[],
-  offers?: OfferModel[],
+  { locations, offers, activeOffers }: Pick<PlaceModel, 'locations' | 'offers' | 'activeOffers'> = {},
 ): PlaceModel => ({
   id: item.id,
   name: item.name,
@@ -113,6 +116,7 @@ export const toPlaceModel = (
   website: item.website || undefined,
   locations,
   offers,
+  activeOffers,
   status: item.status,
   reason: item.reason,
   published: item.published,

@@ -21,7 +21,11 @@ export const storedEnd = '2999-01-01T03:00:00.000Z';
 
 // QueryCommand inputs, for mocking the place partition and the live offers separately
 export const partitionQuery = { KeyConditionExpression: 'PK = :pk' };
-export const liveOffersQuery = { IndexName: 'GSI1' };
+// (keyed on GSI1SK too, so it never also matches the published places listing on GSI1)
+export const liveOffersQuery = {
+  IndexName: 'GSI1',
+  KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK > :now',
+};
 
 export const event = (
   pathParameters: Record<string, string>,

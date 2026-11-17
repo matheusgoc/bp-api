@@ -6,6 +6,7 @@ import { resolveExternalId } from '../../lib/auth';
 import { batchGetAll, ddb, TABLE_NAME } from '../../lib/dynamo';
 import { badRequest, forbidden, json, serverError, unauthorized } from '../../lib/http';
 import { decodeCursor, encodeCursor, parseTake } from '../../lib/pagination';
+import { loadActiveOfferTitles } from '../../lib/placeReads';
 import { logger } from '../../lib/powertools';
 import {
   canManagePlace,
@@ -147,6 +148,9 @@ const listOwnedPlaces = async (
  *   an admin lists every place, an owner only the places whose ownerBy lists them
  * ?take (default 20, capped at 100)
  * ?cursor — cursor-based pagination
+ * each place carries activeOffers — the titles of up to 3 of its visible offers (active,
+ * started, not expired), place-level and location ones together, newest first; no
+ * locations/offers (those are GET /places/{id}'s)
  */
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -195,7 +199,13 @@ export const handler = async (
       ? await listOwnedPlaces(owner, filter, take, exclusiveStartKey)
       : await listPlaces(filter, take, exclusiveStartKey);
 
-    const data = page.items.map((item) => toPlaceModel(item));
+    const now = new Date();
+    // two Queries per place (partition + live offers), in parallel across the page
+    const data = await Promise.all(
+      page.items.map(async (item) =>
+        toPlaceModel(item, { activeOffers: await loadActiveOfferTitles(item.id, now) }),
+      ),
+    );
     const nextCursor = page.lastEvaluatedKey
       ? encodeCursor(cursorTag, page.lastEvaluatedKey)
       : null;

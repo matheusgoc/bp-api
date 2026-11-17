@@ -21,7 +21,8 @@ export const loadPlacePartition = async (
   };
 };
 
-// The place's offers visible on previews (place-level and per location), newest first.
+// The place's offers visible on previews and the listing teaser (place-level and per
+// location), newest first.
 // GSI1 holds only active offers, keyed by end, so `GSI1SK > now` never reads canceled or
 // expired ones; isOfferVisible then drops the ones that haven't started yet.
 export const loadLiveOffers = async (placeId: string, now: Date): Promise<OfferItem[]> => {
@@ -34,4 +35,24 @@ export const loadLiveOffers = async (placeId: string, now: Date): Promise<OfferI
   return items
     .filter((item) => isOfferVisible(item, now))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+};
+
+export const ACTIVE_OFFERS_PREVIEW_SIZE = 3;
+
+// Titles of the place's visible offers — place-level and location ones together, newest
+// first — capped for the listing's teaser. Offers of soft-deleted locations are skipped,
+// as on the place preview, which is why the partition is read too.
+export const loadActiveOfferTitles = async (placeId: string, now: Date): Promise<string[]> => {
+  const [{ locations }, offers] = await Promise.all([
+    loadPlacePartition(placeId),
+    loadLiveOffers(placeId, now),
+  ]);
+
+  // a place-level offer's locationId is '', never in the set
+  const deleted = new Set(locations.filter((location) => location.deleted).map((location) => location.id));
+
+  return offers
+    .filter((offer) => !deleted.has(offer.locationId))
+    .slice(0, ACTIVE_OFFERS_PREVIEW_SIZE)
+    .map((offer) => offer.title);
 };

@@ -39,7 +39,7 @@ export const handler = async (
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map((location) => toLocationModel(location, offersAt(location.id)));
 
-    return json(200, toPlaceModel(place, locationModels, offersAt('')));
+    return json(200, toPlaceModel(place, { locations: locationModels, offers: offersAt('') }));
   } catch (error) {
     logger.error('Failed to preview place', error as Error);
     return serverError();

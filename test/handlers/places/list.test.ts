@@ -1,9 +1,12 @@
 import type { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
-import { BatchGetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchGetCommand, QueryCommand, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../../src/lib/dynamo';
+import { OfferStatus } from '../../../src/models/offer';
 import { PlaceItem, PlaceStatus } from '../../../src/models/place';
 import { UserRole } from '../../../src/models/user';
+import { makeLocation } from '../locations/fixtures';
+import { FUTURE, liveOffersQuery, makeOffer, PAST, partitionQuery } from '../offers/fixtures';
 
 const verify = jest.fn();
 jest.mock('aws-jwt-verify', () => ({
@@ -78,16 +81,32 @@ const ownerCaller = { id: 'u1', role: UserRole.OWNER };
 
 const ownershipQuery = { KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)' };
 
+// the listing query itself — GSI1 (published) or GSI2 (admin "all"/"false")
+const placesQuery = (index: 'GSI1' | 'GSI2') => ({
+  IndexName: index,
+  KeyConditionExpression: `${index}PK = :pk`,
+});
+
+// answers a per-place query (partition / live offers) from the items listed under its :pk
+const byPk =
+  (items: Record<string, object[]>) =>
+  (input: QueryCommandInput) => ({
+    Items: items[String(input.ExpressionAttributeValues?.[':pk'])] ?? [],
+  });
+
 describe('GET /places', () => {
   beforeEach(() => {
     ddbMock.reset();
+    // each listed place's own locations and offers — none unless a test says otherwise
+    ddbMock.on(QueryCommand, partitionQuery).resolves({ Items: [] });
+    ddbMock.on(QueryCommand, liveOffersQuery).resolves({ Items: [] });
     verify.mockReset();
     findUserByExternalId.mockReset();
     findUserByExternalId.mockResolvedValue({ id: 'admin-1', role: UserRole.ADMIN });
   });
 
   it('defaults to querying GSI1 for published places and maps them to PlaceModel', async () => {
-    ddbMock.on(QueryCommand).resolves({ Items: [item] });
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({ Items: [item] });
 
     const result = await handler(eventWith(null), context);
 
@@ -108,6 +127,64 @@ describe('GET /places', () => {
     expect(call.args[0].input.ExclusiveStartKey).toBeUndefined();
     expect(call.args[0].input.ExpressionAttributeValues?.[':pk']).toBe('PLACE#PUBLISHED');
     expect(verify).not.toHaveBeenCalled();
+  });
+
+  // offers are created a month apart, so newest-first order is by month
+  const offerOn = (month: number, overrides: Parameters<typeof makeOffer>[0] = {}) =>
+    makeOffer({
+      title: `offer ${month}`,
+      createdAt: `2024-${String(month).padStart(2, '0')}-01T00:00:00.000Z`,
+      ...overrides,
+    });
+
+  it("teases each place's visible place and location offers as activeOffers, newest first", async () => {
+    const other = { ...item, PK: 'PLACE#2', id: '2' };
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({ Items: [item, other] });
+    ddbMock.on(QueryCommand, partitionQuery).callsFake(
+      byPk({
+        'PLACE#1': [
+          item,
+          makeLocation({ PK: 'PLACE#1', SK: 'LOCATION#a', id: 'a' }),
+          makeLocation({ PK: 'PLACE#1', SK: 'LOCATION#c', id: 'c', deleted: true }),
+        ],
+        'PLACE#2': [other],
+      }),
+    );
+    ddbMock.on(QueryCommand, liveOffersQuery).callsFake(
+      byPk({
+        'OFFER#ACTIVE#PLACE#1': [
+          offerOn(1),
+          offerOn(3, { locationId: 'a', end: FUTURE }),
+          offerOn(2, { start: PAST }),
+          // never teased, however new
+          offerOn(9, { locationId: 'c' }), // its location is soft-deleted
+          offerOn(8, { start: FUTURE }), // not started yet
+          offerOn(7, { end: PAST }), // expired
+          offerOn(6, { status: OfferStatus.CANCELED }),
+        ],
+      }),
+    );
+
+    const result = await handler(eventWith(null), context);
+
+    expect(result.statusCode).toBe(200);
+    const [first, second] = JSON.parse(result.body).data;
+    expect(first.activeOffers).toEqual(['offer 3', 'offer 2', 'offer 1']);
+    // the listing carries no location data and no full offers
+    expect(first.locations).toBeUndefined();
+    expect(first.offers).toBeUndefined();
+    expect(second.activeOffers).toEqual([]);
+  });
+
+  it('caps activeOffers at the 3 newest visible offers', async () => {
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({ Items: [item] });
+    ddbMock.on(QueryCommand, liveOffersQuery).resolves({
+      Items: [offerOn(1), offerOn(5, { locationId: 'a' }), offerOn(2), offerOn(4), offerOn(3)],
+    });
+
+    const result = await handler(eventWith(null), context);
+
+    expect(JSON.parse(result.body).data[0].activeOffers).toEqual(['offer 5', 'offer 4', 'offer 3']);
   });
 
   it('rejects an invalid "published" value', async () => {
@@ -143,7 +220,7 @@ describe('GET /places', () => {
   });
 
   it('passes take as Limit and returns a nextCursor when more results exist', async () => {
-    ddbMock.on(QueryCommand).resolves({
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({
       Items: [item],
       LastEvaluatedKey: { PK: 'PLACE#1', SK: 'METADATA', GSI1PK: 'PLACE#PUBLISHED', GSI1SK: 'x' },
     });
@@ -162,7 +239,7 @@ describe('GET /places', () => {
   it('resumes from a decoded cursor and reports hasPreviousPage', async () => {
     const lastEvaluatedKey = { PK: 'PLACE#1', SK: 'METADATA', GSI1PK: 'PLACE#PUBLISHED', GSI1SK: 'x' };
     const cursor = encodeCursor('true', lastEvaluatedKey);
-    ddbMock.on(QueryCommand).resolves({ Items: [item] });
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({ Items: [item] });
 
     const result = await handler(eventWith({ cursor }), context);
 
@@ -196,7 +273,7 @@ describe('GET /places', () => {
 
   it('queries GSI2 with no filter for ?published=all from an admin', async () => {
     verify.mockResolvedValue({ sub: 'user-1' });
-    ddbMock.on(QueryCommand).resolves({ Items: [item, { ...item, published: false }] });
+    ddbMock.on(QueryCommand, placesQuery('GSI2')).resolves({ Items: [item, { ...item, published: false }] });
 
     const result = await handler(eventWith({ published: 'all' }, 'Bearer good-token'), context);
 
@@ -212,7 +289,7 @@ describe('GET /places', () => {
   it('queries GSI2 with a published=false filter for ?published=false from an admin', async () => {
     verify.mockResolvedValue({ sub: 'user-1' });
     const unpublished = { ...item, published: false };
-    ddbMock.on(QueryCommand).resolves({ Items: [unpublished] });
+    ddbMock.on(QueryCommand, placesQuery('GSI2')).resolves({ Items: [unpublished] });
 
     const result = await handler(eventWith({ published: 'false' }, 'Bearer good-token'), context);
 
@@ -230,7 +307,7 @@ describe('GET /places', () => {
 
   it('looks up the caller profile by the verified token sub', async () => {
     verify.mockResolvedValue({ sub: 'sub-1' });
-    ddbMock.on(QueryCommand).resolves({ Items: [] });
+    ddbMock.on(QueryCommand, placesQuery('GSI2')).resolves({ Items: [] });
 
     await handler(eventWith({ published: 'all' }, 'Bearer good-token'), context);
 
@@ -252,7 +329,7 @@ describe('GET /places', () => {
 
   it('lists every published place for an owner too, publicly', async () => {
     findUserByExternalId.mockResolvedValue(ownerCaller);
-    ddbMock.on(QueryCommand).resolves({ Items: [item] });
+    ddbMock.on(QueryCommand, placesQuery('GSI1')).resolves({ Items: [item] });
 
     const result = await handler(eventWith(null, 'Bearer good-token'), context);
 
@@ -293,6 +370,14 @@ describe('GET /places', () => {
       { PK: 'PLACE#p2', SK: 'METADATA' },
       { PK: 'PLACE#p3', SK: 'METADATA' },
     ]);
+
+    // activeOffers are only loaded for the places that made it onto the page
+    const pks = (query: typeof partitionQuery) =>
+      ddbMock
+        .commandCalls(QueryCommand, query)
+        .map((call) => call.args[0].input.ExpressionAttributeValues?.[':pk']);
+    expect(pks(partitionQuery)).toEqual(ids.map((id) => `PLACE#${id}`));
+    expect(pks(liveOffersQuery)).toEqual(ids.map((id) => `OFFER#ACTIVE#PLACE#${id}`));
   });
 
   it('skips the place fetch when an owner caller has no places', async () => {
@@ -305,6 +390,8 @@ describe('GET /places', () => {
     expect(result.statusCode).toBe(200);
     expect(JSON.parse(result.body).data).toEqual([]);
     expect(ddbMock.commandCalls(BatchGetCommand)).toHaveLength(0);
+    expect(ddbMock.commandCalls(QueryCommand, partitionQuery)).toHaveLength(0);
+    expect(ddbMock.commandCalls(QueryCommand, liveOffersQuery)).toHaveLength(0);
   });
 
   it("tags an owner caller's cursor with their id and resumes from it", async () => {
@@ -324,7 +411,9 @@ describe('GET /places', () => {
       eventWith({ published: 'all', cursor: first.meta.nextCursor }, 'Bearer good-token'),
       context,
     );
-    expect(ddbMock.commandCalls(QueryCommand)[1].args[0].input.ExclusiveStartKey).toEqual(lastEvaluatedKey);
+    expect(
+      ddbMock.commandCalls(QueryCommand, ownershipQuery)[1].args[0].input.ExclusiveStartKey,
+    ).toEqual(lastEvaluatedKey);
   });
 
   it.each([
@@ -373,7 +462,7 @@ describe('GET /places', () => {
     // the page filled on the owner's very last item
     expect(body.meta).toMatchObject({ hasNextPage: false, nextCursor: null });
 
-    const queries = ddbMock.commandCalls(QueryCommand);
+    const queries = ddbMock.commandCalls(QueryCommand, ownershipQuery);
     expect(queries).toHaveLength(2);
     expect(queries[1].args[0].input.ExclusiveStartKey).toEqual({ PK: o2.PK, SK: o2.SK });
   });

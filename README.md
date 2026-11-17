@@ -263,8 +263,8 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 
 | Method | Path                                 | Auth         | Description |
 |--------|--------------------------------------|--------------|-------------|
-| GET    | `/places`                            | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`) — for everyone. Paginated: `?take` (default 20, max 100) and `?cursor`. |
-| GET    | `/places?published=false\|all`       | JWT + owner/admin | List unpublished places only (`false`) or every place regardless of visibility (`all`). An admin gets every place (via `GSI2`); an owner gets only the places they own (whose `ownerBy` lists them). The JWT is verified inside the handler rather than by the Gateway authorizer; `401` if it's missing or invalid, `403` unless the caller is an owner/admin. |
+| GET    | `/places`                            | Public       | List places. Only `published === true` places are returned (query against the sparse `GSI1`) — for everyone. Each place includes `activeOffers`, the titles of up to 3 of its published offers (place and location offers together, newest first; `[]` when none), as a teaser for the listing (see [Place offers](#place-offers)). It carries no `locations`/`offers`; those come from `GET /places/{id}`. Paginated: `?take` (default 20, max 100) and `?cursor`. |
+| GET    | `/places?published=false\|all`       | JWT + owner/admin | List unpublished places only (`false`) or every place regardless of visibility (`all`). An admin gets every place (via `GSI2`); an owner gets only the places they own (whose `ownerBy` lists them). Places carry `activeOffers` as above. The JWT is verified inside the handler rather than by the Gateway authorizer; `401` if it's missing or invalid, `403` unless the caller is an owner/admin. |
 | POST   | `/places`                            | JWT + owner/admin | Create a place, owned by the caller. Always created as `status: draft`, `published: false`. |
 | GET    | `/places/{id}`                       | Public       | Preview a single place, including its `locations` (oldest first) and visible `offers` (see [Place offers](#place-offers)). Ignores `published`/`status` — returns regardless of visibility state. Soft-deleted locations are hidden unless `?deleted=true`, in which case they're included with `deleted: true`. |
 | PUT    | `/places/{id}`                       | JWT + place owner/admin | Update `name`/`description`/`categoryId`/`website`. Resets `status` to `reviewing` as a side effect; never touches `published`. `photo`/`logo`/`status`/`reason`/`published` in the body are ignored. |
@@ -303,7 +303,8 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 > - offers endpoints return each offer with a `place` (`id`/`name`/`logo`)
 > - for location offers, a `location` (`id`/`name`/`city`/`state`) summary.
 > - published offers are the ones with `active` status that has been started (when `start` are reached) and are not expired
-> - The publice endpoint `GET /places/{id}` lists *published* place offers in its top-level `offers` attribute and location offers under `locations.offers` attribute 
+> - The public endpoint `GET /places/{id}` lists *published* place offers in the top-level `offers` attribute and location offers under the `locations.offers` attribute 
+> - The public endpoint `GET /places` gives each listed place an `activeOffers` attribute: the titles of up to 3 *published* offers, place and location offers together, newest first. Offers of soft-deleted locations are left out.
 > - `GET /places/{id}/locations/{locationId}` list all offers
 
 ### Errors
