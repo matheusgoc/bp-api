@@ -22,7 +22,9 @@ const VALID_GENDERS: Gender[] = ['M', 'F', 'N', 'O', 'U', ''];
  * Update Profile
  *
  * PUT /profile (Cognito-protected)
- * Updates the current user's own name/email/phone/dob/gender/isWhatsapp.
+ * Updates the current user's own name/phone/dob/gender/isWhatsapp.
+ * Email is fixed at signup — if it ever becomes editable here, GSI2PK (the email lookup
+ * index, see userEmailKey) must be rewritten along with it.
  */
 export const handler = async (
   event: APIGatewayProxyEvent,

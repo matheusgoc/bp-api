@@ -244,7 +244,7 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 |--------|--------------------|--------------|-------------|
 | POST   | `/profile`         | JWT required | Create the caller's app-level profile — called by the app after Amplify Cognito signup/confirm/signin. Requires `name`/`email`; `phone`/`isWhatsapp`/`dob`/`gender` optional. Created as `role: customer`, `subscriptionStatus: not_applied`. `409` if the caller already has a profile. |
 | GET    | `/profile`         | JWT required | Preview the caller's own profile (resolved from the token, never a path parameter). |
-| PUT    | `/profile`         | JWT required | Update the caller's own `name`/`email`/`phone`/`dob`/`gender`/`isWhatsapp`. |
+| PUT    | `/profile`         | JWT required | Update the caller's own `name`/`phone`/`dob`/`gender`/`isWhatsapp`. The `email` is fixed at signup. |
 | PATCH  | `/profile/convert` | JWT required | Convert the caller to `owner` (no body needed). If the caller is an `admin` and the body has `{ id, type? }`, converts that *other* user instead to `type` (any role, default `owner`) — `400` if `id` is the caller's own, `404` if the user doesn't exist. Non-admins' `id`/`type` are ignored. |
 
 ### Categories
@@ -274,6 +274,8 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 | PATCH  | `/places/{id}/images/{type}`         | JWT + place owner/admin | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
 | PATCH  | `/places/{id}/images/{type}/approve` | JWT + admin  | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to a new versioned live key, then clears the draft and deletes the image it replaced. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
 | PATCH  | `/places/{id}/grant`                 | JWT + place owner/admin | Give another user ownership of the place, its locations and offers. Body: `{ owner: <userId> }`. `404` if the user doesn't exist, `400` unless their `role` is `owner`, `409` if they already own the place. Returns `{ id, owner }`. |
+| PATCH  | `/places/{id}/owners/find`           | JWT + place owner/admin | Find an owner user to grant the place to. Body: `{ email }` (case-insensitive). Returns `{ id, name, email }`. `404` if no user with the `owner` role has that email (customers and admins aren't searchable), `409` if they already own the place. Read-only despite the `PATCH`. |
+| GET    | `/places/{id}/owners`                | JWT + place owner/admin | List the place's other owners (the caller isn't included), in the order they were granted: `{ data: [{ id, name, email }] }`. Not paginated. |
 
 ### Place locations
 
@@ -360,6 +362,6 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 
 - CI/CD with CodePipeline (CDK Pipelines) — deploy on push
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
-- Owner user search (`name`/`email`) for picking who to grant place ownership to, and revoking a place owner
+- Revoking a place owner
 - Role-based authorization on category endpoints (any authenticated user can mutate them today)
 - Request validation with API Gateway models or zod

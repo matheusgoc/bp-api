@@ -157,6 +157,8 @@ export class BpApiStack extends cdk.Stack {
     const reviewPlaceFn = makeFunction('places-review');
     const previewPlaceFn = makeFunction('places-preview');
     const grantPlaceFn = makeFunction('places-grant');
+    const findPlaceOwnerFn = makeFunction('places-find-owner');
+    const listPlaceOwnersFn = makeFunction('places-list-owners');
 
     const listPlacesFn = makeFunction('places-list');
     listPlacesFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
@@ -179,6 +181,8 @@ export class BpApiStack extends cdk.Stack {
     table.grantReadWriteData(unpublishPlaceFn);
     table.grantReadWriteData(reviewPlaceFn);
     table.grantReadWriteData(grantPlaceFn);
+    table.grantReadData(findPlaceOwnerFn); // a PATCH per the API contract, but it writes nothing
+    table.grantReadData(listPlaceOwnersFn);
     table.grantReadData(listPlacesFn);
     table.grantReadData(previewPlaceFn);
 
@@ -311,6 +315,11 @@ export class BpApiStack extends cdk.Stack {
     placeById
       .addResource('grant')
       .addMethod('PATCH', new apigw.LambdaIntegration(grantPlaceFn), requireAuth); // PATCH /places/{id}/grant
+    const placeOwners = placeById.addResource('owners');
+    placeOwners.addMethod('GET', new apigw.LambdaIntegration(listPlaceOwnersFn), requireAuth); // GET /places/{id}/owners
+    placeOwners
+      .addResource('find')
+      .addMethod('PATCH', new apigw.LambdaIntegration(findPlaceOwnerFn), requireAuth); // PATCH /places/{id}/owners/find
     const placeImageType = placeById.addResource('images').addResource('{type}');
     placeImageType.addMethod('PATCH', new apigw.LambdaIntegration(uploadPlaceImageFn), requireAuth); // PATCH /places/{id}/images/{type}
     placeImageType

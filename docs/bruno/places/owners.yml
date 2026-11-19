@@ -1,0 +1,20 @@
+info:
+  name: owners
+  type: http
+  seq: 14
+
+http:
+  method: GET
+  url: "{{BASE}}/places/:id/owners"
+  params:
+    - name: id
+      value: 6ef53057-39b4-4f0c-bd3b-e4c9bad7343d
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

@@ -12,6 +12,7 @@ import {
   UserItem,
   UserRole,
   toUserModel,
+  userEmailKey,
   userExternalIdKey,
 } from '../../models/user';
 
@@ -82,6 +83,9 @@ export const handler = async (
       SK: 'METADATA',
       GSI1PK: userExternalIdKey(externalId),
       GSI1SK: 'METADATA',
+      // owner search lookup (PATCH /places/{id}/owners/find)
+      GSI2PK: userEmailKey(profileDto.email),
+      GSI2SK: 'METADATA',
       id,
       externalId,
       name: profileDto.name.trim(),

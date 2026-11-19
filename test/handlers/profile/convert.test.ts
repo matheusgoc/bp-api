@@ -21,6 +21,8 @@ const makeUser = (overrides: Partial<UserItem>): UserItem => ({
   SK: 'METADATA',
   GSI1PK: 'USER#EXTERNAL#ext-1',
   GSI1SK: 'METADATA',
+  GSI2PK: 'USER#EMAIL#ana@example.com',
+  GSI2SK: 'METADATA',
   id: '1',
   externalId: 'ext-1',
   name: 'Ana',

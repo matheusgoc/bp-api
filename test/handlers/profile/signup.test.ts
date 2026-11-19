@@ -44,6 +44,20 @@ describe('POST /profile', () => {
     expect(putCall.args[0].input.Item?.GSI1PK).toBe('USER#EXTERNAL#ext-1');
   });
 
+  it('indexes the profile by its normalized email, keeping the email as entered', async () => {
+    resolveExternalId.mockResolvedValue({ externalId: 'ext-1' });
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
+    ddbMock.on(PutCommand).resolves({});
+
+    const result = await handler(event({ name: 'Ana', email: '  Ana@Example.com ' }), context);
+
+    expect(result.statusCode).toBe(201);
+    const item = ddbMock.commandCalls(PutCommand)[0].args[0].input.Item;
+    expect(item?.email).toBe('Ana@Example.com');
+    expect(item?.GSI2PK).toBe('USER#EMAIL#ana@example.com');
+    expect(item?.GSI2SK).toBe('METADATA');
+  });
+
   it('accepts phone/isWhatsapp/dob/gender', async () => {
     resolveExternalId.mockResolvedValue({ externalId: 'ext-2' });
     ddbMock.on(QueryCommand).resolves({ Items: [] });
