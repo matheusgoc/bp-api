@@ -230,7 +230,7 @@ Infrastructure is defined in TypeScript with **CDK** (`lib/bp-api-stack.ts`), wh
 
 JWT-required routes expect `Authorization: Bearer <idToken>` (Cognito), enforced by API Gateway's Cognito authorizer in AWS. (**SAM local does not enforce it** — those routes work locally without a token.)
 
-The "owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. The "place owner/admin" routes go one step further: an owner must also be one of the place's owners (its internal `ownerBy` list, set to the creator by `POST /places` and extended by `PATCH /places/{id}/grant`) — `403` otherwise, `404` if the place doesn't exist. Admins can manage every place. Locations and offers follow their place's ownership. The "admin" routes accept admins only.
+The "owner/admin" routes additionally look up the caller's profile and return `403` unless its `role` is `owner` or `admin`. The "place owner/admin" routes go one step further: an owner must also be one of the place's owners (its internal `ownerBy` list, set to the creator by `POST /places`, extended by `PATCH /places/{id}/grant` and reduced by `PATCH /places/{id}/revoke`) — `403` otherwise, `404` if the place doesn't exist. Admins can manage every place. Locations and offers follow their place's ownership. The "admin" routes accept admins only.
 
 ### Health
 
@@ -274,6 +274,7 @@ The "owner/admin" routes additionally look up the caller's profile and return `4
 | PATCH  | `/places/{id}/images/{type}`         | JWT + place owner/admin | Issue a presigned S3 PUT URL for the place's `photo` or `logo` (`{type}` is one of those two values, uploaded separately). Body: `{ contentType }` (`image/jpeg`\|`image/png`\|`image/webp`). Writes the resulting URL to `draftPhoto`/`draftLogo` — optimistic, before the client's S3 PUT actually completes, but never touches the public `photo`/`logo` field. |
 | PATCH  | `/places/{id}/images/{type}/approve` | JWT + admin  | Promote a pending `draftPhoto`/`draftLogo` to the live `photo`/`logo` field. Copies the S3 object from its draft key to a new versioned live key, then clears the draft and deletes the image it replaced. `400` if there's no pending draft for that type or the draft object isn't actually in S3; `404` if the place doesn't exist. |
 | PATCH  | `/places/{id}/grant`                 | JWT + place owner/admin | Give another user ownership of the place, its locations and offers. Body: `{ owner: <userId> }`. `404` if the user doesn't exist, `400` unless their `role` is `owner`, `409` if they already own the place. Returns `{ id, owner }`. |
+| PATCH  | `/places/{id}/revoke`                | JWT + place owner/admin | Take away another owner's access to the place, its locations and offers. Body: `{ owner: <userId> }`. `400` if `owner` is the caller, `404` if they don't own the place, `403` if they're the place's creator and the caller isn't an admin, `409` if the place's owners changed at the same time (retry). Returns `{ id, owner }`. |
 | PATCH  | `/places/{id}/owners/find`           | JWT + place owner/admin | Find an owner user to grant the place to. Body: `{ email }` (case-insensitive). Returns `{ id, name, email }`. `404` if no user with the `owner` role has that email (customers and admins aren't searchable), `409` if they already own the place. Read-only despite the `PATCH`. |
 | GET    | `/places/{id}/owners`                | JWT + place owner/admin | List the place's other owners (the caller isn't included), in the order they were granted: `{ data: [{ id, name, email }] }`. Not paginated. |
 
@@ -336,6 +337,7 @@ Match on `code` (and `field`), never on `msg`. The message wording may change. T
 | `NO_PENDING_DRAFT_IMAGE` | `type` | Approving an image when there's no pending `draftPhoto`/`draftLogo`. |
 | `DRAFT_IMAGE_NOT_UPLOADED` | | Approving an image whose draft file never reached storage. Re-upload it. |
 | `OWNER_ROLE_REQUIRED` | `owner` | `PATCH /places/{id}/grant` names a user whose role isn't `owner`. |
+| `CANNOT_REVOKE_SELF` | `owner` | `PATCH /places/{id}/revoke` names the caller. |
 | `CANNOT_CONVERT_SELF` | `id` | An admin's `PATCH /profile/convert` targets their own id. |
 
 The other error statuses (`401`/`403`/`404`/`409`/`500`) still return `{ "error": "<message>" }`.
@@ -362,6 +364,5 @@ Adding a new endpoint: create `src/handlers/<entity>/<name>.ts` (and a `src/mode
 
 - CI/CD with CodePipeline (CDK Pipelines) — deploy on push
 - CloudWatch alarms + dashboard for API 5xx, Lambda errors, DynamoDB throttles
-- Revoking a place owner
 - Role-based authorization on category endpoints (any authenticated user can mutate them today)
 - Request validation with API Gateway models or zod

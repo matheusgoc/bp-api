@@ -37,6 +37,10 @@ export const BAD_REQUEST = {
     field: 'owner',
     msg: '"owner" must be a user with the owner role',
   }),
+  CANNOT_REVOKE_SELF: () => ({
+    field: 'owner',
+    msg: '"owner" must be another user, not the current one',
+  }),
   CANNOT_CONVERT_SELF: () => ({
     field: 'id',
     msg: '"id" must be another user, not the current one',
